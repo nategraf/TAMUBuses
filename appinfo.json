@@ -1,0 +1,23 @@
+{
+    "appKeys": {
+        "message": 1,
+        "status": 0
+    },
+    "capabilities": [
+        ""
+    ],
+    "companyName": "nategraf1@gmail.com",
+    "enableMultiJS": true,
+    "longName": "TAMU Buses",
+    "projectType": "native",
+    "resources": {
+        "media": []
+    },
+    "sdkVersion": "3",
+    "shortName": "TAMU Buses",
+    "uuid": "4caa45eb-bdc0-49ad-9a57-f42302aaff6d",
+    "versionLabel": "1.0",
+    "watchapp": {
+        "watchface": false
+    }
+}
