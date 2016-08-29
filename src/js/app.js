@@ -7,6 +7,41 @@ var myStatus = 1;
 var retryWaitOriginal = 50;
 var retryWait = retryWaitOriginal;
 var pebbleInboxSize = 124; // The defult minimum
+var pebbleUsedInbox = 0;
+
+// Used to figure if there is room to send more items
+function roughSizeOfObject( object ) {
+
+    var objectList = [];
+    var stack = [ object ];
+    var bytes = 0;
+
+    while ( stack.length ) {
+        var value = stack.pop();
+
+        if ( typeof value === 'boolean' ) {
+            bytes += 4;
+        }
+        else if ( typeof value === 'string' ) {
+            bytes += value.length * 2;
+        }
+        else if ( typeof value === 'number' ) {
+            bytes += 8;
+        }
+        else if
+        (
+            typeof value === 'object' && objectList.indexOf( value ) === -1
+        )
+        {
+            objectList.push( value );
+
+            for( var i in value ) {
+                stack.push( value[ i ] );
+            }
+        }
+    }
+    return bytes;
+}
 
 // Function to send a message to the Pebble using AppMessage API
 // We are currently only sending a message using the "status" appKey defined in appinfo.json/Settings     

@@ -29,6 +29,7 @@ static GRect s_loading_frame;
 static int s_routes_len[SECTIONS_LEN] = {0, 0, 0, 0};
 static char *s_section_titles[SECTIONS_LEN] = {"On Campus", "Off Campus", "Game Day", "Other"};
 static MenuItem s_route_items[SECTIONS_LEN][ROUTES_LEN];
+static bool s_routes_loading = S_FALSE;
 
 //========================================= CLICK HANDLING ======================================================
 void down_single_click_handler(ClickRecognizerRef recognizer, void *context) {
@@ -96,9 +97,6 @@ static void in_received_handler(DictionaryIterator *received, void *context) {
 	tuple = dict_find(received, MESSAGE_KEY_request);
 	if(tuple) {
     if(strcmp(tuple->value->cstring, "ROUTES") == 0){
-      // Show the route menu/hide the loadind message
-      layer_set_hidden(menu_layer_get_layer(s_route_menu), false);
-      
       // Save the route name on the heap for use in the menu
       char *name = malloc(ROUTE_NAME_LEN); 
       name[0] = '\0';
@@ -134,7 +132,15 @@ static void in_received_handler(DictionaryIterator *received, void *context) {
       
       s_route_items[i][s_routes_len[i]].title = short_name;
       s_route_items[i][s_routes_len[i]].subtitle = name;
+      menu_layer_set_selected_index(s_route_menu, MenuIndex(i, s_routes_len[i]), MenuRowAlignCenter, false);
       s_routes_len[i]++;
+      
+      // Show the route menu/hide the loading message
+      if(s_routes_loading){
+        s_routes_loading = S_FALSE;
+        layer_set_hidden(menu_layer_get_layer(s_route_menu), false);
+        layer_set_hidden(text_layer_get_layer(s_loading_text), true);
+      }
       
       layer_mark_dirty(menu_layer_get_layer(s_route_menu));
     }
@@ -226,6 +232,7 @@ static void main_window_load(Window *window) {
   
   // Bind the menu layer's click config provider to the window for interactivity
   menu_layer_set_click_config_onto_window(s_route_menu, window);
+  s_routes_loading = S_TRUE;
   layer_set_hidden(menu_layer_get_layer(s_route_menu), true);
   layer_add_child(window_layer, menu_layer_get_layer(s_route_menu));
 }
