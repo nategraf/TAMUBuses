@@ -20,16 +20,16 @@ typedef struct{
 } MenuItem;
 
 static Window *s_menu_window;
-static MenuLayer *s_route_menu;
-static TextLayer *s_loading_text;
+static MenuLayer *s_menu_layer;
+static TextLayer *s_menu_loading_text;
 
 static GRect s_menu_window_frame;
-static GRect s_loading_frame;
+static GRect s_menu_loading_frame;
 
-static int s_routes_len[SECTIONS_LEN] = {0, 0, 0, 0};
+static int s_section_lens[SECTIONS_LEN] = {0, 0, 0, 0};
 static char *s_section_titles[SECTIONS_LEN] = {"On Campus", "Off Campus", "Game Day", "Other"};
-static MenuItem s_route_items[SECTIONS_LEN][ROUTES_LEN];
-static bool s_routes_loading = S_FALSE;
+static MenuItem s_menu_items[SECTIONS_LEN][ROUTES_LEN];
+static bool s_menu_loading = S_FALSE;
 
 //========================================= CLICK HANDLING ======================================================
 void down_single_click_handler(ClickRecognizerRef recognizer, void *context) {
@@ -130,19 +130,19 @@ static void in_received_handler(DictionaryIterator *received, void *context) {
         i = ON_CAMPUS_GROUP;
       }
       
-      s_route_items[i][s_routes_len[i]].title = short_name;
-      s_route_items[i][s_routes_len[i]].subtitle = name;
-      menu_layer_set_selected_index(s_route_menu, MenuIndex(i, s_routes_len[i]), MenuRowAlignCenter, false);
-      s_routes_len[i]++;
+      s_menu_items[i][s_section_lens[i]].title = short_name;
+      s_menu_items[i][s_section_lens[i]].subtitle = name;
+      menu_layer_set_selected_index(s_menu_layer, MenuIndex(i, s_section_lens[i]), MenuRowAlignCenter, false);
+      s_section_lens[i]++;
       
       // Show the route menu/hide the loading message
-      if(s_routes_loading){
-        s_routes_loading = S_FALSE;
-        layer_set_hidden(menu_layer_get_layer(s_route_menu), false);
-        layer_set_hidden(text_layer_get_layer(s_loading_text), true);
+      if(s_menu_loading){
+        s_menu_loading = S_FALSE;
+        layer_set_hidden(menu_layer_get_layer(s_menu_layer), false);
+        layer_set_hidden(text_layer_get_layer(s_menu_loading_text), true);
       }
       
-      layer_mark_dirty(menu_layer_get_layer(s_route_menu));
+      layer_mark_dirty(menu_layer_get_layer(s_menu_layer));
     }
 	}
 }
@@ -157,7 +157,7 @@ static uint16_t menu_get_num_sections_callback(MenuLayer *menu_layer, void *cont
 }
 
 static uint16_t menu_get_num_rows_callback(MenuLayer *menu_layer, uint16_t section_index, void *context) {
-  return s_routes_len[section_index];
+  return s_section_lens[section_index];
 }
 
 static int16_t menu_get_header_height_callback(MenuLayer *menu_layer, uint16_t section_index, void *context) {
@@ -165,7 +165,7 @@ static int16_t menu_get_header_height_callback(MenuLayer *menu_layer, uint16_t s
 }
 
 static void menu_draw_header_callback(GContext* gctx, const Layer *cell_layer, uint16_t section_index, void *context) {
-  if(s_routes_len[section_index] > 0){
+  if(s_section_lens[section_index] > 0){
     menu_cell_basic_header_draw(gctx, cell_layer, s_section_titles[section_index]);
   }
 }
@@ -173,16 +173,16 @@ static void menu_draw_header_callback(GContext* gctx, const Layer *cell_layer, u
 static void menu_draw_row_callback(GContext* gctx, const Layer *cell_layer, MenuIndex *cell_index, void *context) {
   uint16_t i = cell_index->section;
   uint16_t j = cell_index->row;
-  menu_cell_basic_draw(gctx, cell_layer, s_route_items[i][j].title, s_route_items[i][j].subtitle, NULL);
+  menu_cell_basic_draw(gctx, cell_layer, s_menu_items[i][j].title, s_menu_items[i][j].subtitle, NULL);
 }
 
 static void menu_select_callback(MenuLayer *menu_layer, MenuIndex *cell_index, void *context) {
   uint16_t i = cell_index->section;
   uint16_t j = cell_index->row;
-  MenuItem *item = &s_route_items[i][j];
+  MenuItem *item = &s_menu_items[i][j];
   if(item){
     item->subtitle = "SELECTED";
-    layer_mark_dirty(menu_layer_get_layer(s_route_menu));
+    layer_mark_dirty(menu_layer_get_layer(s_menu_layer));
   }
 }
 
@@ -197,30 +197,30 @@ static int16_t get_cell_height_callback(MenuLayer *menu_layer, MenuIndex *cell_i
 }
 #endif  
 
-//========================================= MAIN ======================================================
+//========================================= MENU WINDOW ======================================================
 static void menu_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   s_menu_window_frame = layer_get_frame(window_layer);
     
   // Create the loading text
-  s_loading_text = text_layer_create(s_menu_window_frame);
-  text_layer_set_background_color(s_loading_text, GColorClear);
-  text_layer_set_text_color(s_loading_text, GColorBlack);
-  text_layer_set_text_alignment(s_loading_text, GTextAlignmentCenter);
-  text_layer_set_text(s_loading_text, "Loading routes...");
-  layer_add_child(window_layer, text_layer_get_layer(s_loading_text));
+  s_menu_loading_text = text_layer_create(s_menu_window_frame);
+  text_layer_set_background_color(s_menu_loading_text, GColorClear);
+  text_layer_set_text_color(s_menu_loading_text, GColorBlack);
+  text_layer_set_text_alignment(s_menu_loading_text, GTextAlignmentCenter);
+  text_layer_set_text(s_menu_loading_text, "Loading routes...");
+  layer_add_child(window_layer, text_layer_get_layer(s_menu_loading_text));
   
   // Center the loading text
-  GSize loading_text_size = text_layer_get_content_size(s_loading_text);
-  s_loading_frame = s_menu_window_frame;
-  s_loading_frame.origin.y = (s_menu_window_frame.size.h - loading_text_size.h)/2;
+  GSize loading_text_size = text_layer_get_content_size(s_menu_loading_text);
+  s_menu_loading_frame = s_menu_window_frame;
+  s_menu_loading_frame.origin.y = (s_menu_window_frame.size.h - loading_text_size.h)/2;
   
   // Move the loading text to its new position
-  layer_set_frame(text_layer_get_layer(s_loading_text), s_loading_frame);
-  layer_mark_dirty(text_layer_get_layer(s_loading_text));
+  layer_set_frame(text_layer_get_layer(s_menu_loading_text), s_menu_loading_frame);
+  layer_mark_dirty(text_layer_get_layer(s_menu_loading_text));
     
-  s_route_menu = menu_layer_create(s_menu_window_frame);
-  menu_layer_set_callbacks(s_route_menu, NULL, (MenuLayerCallbacks){
+  s_menu_layer = menu_layer_create(s_menu_window_frame);
+  menu_layer_set_callbacks(s_menu_layer, NULL, (MenuLayerCallbacks){
     .get_num_sections = menu_get_num_sections_callback,
     .get_num_rows = menu_get_num_rows_callback,
     .get_header_height = menu_get_header_height_callback,
@@ -231,25 +231,24 @@ static void menu_window_load(Window *window) {
   });
   
   // Bind the menu layer's click config provider to the window for interactivity
-  menu_layer_set_click_config_onto_window(s_route_menu, window);
-  s_routes_loading = S_TRUE;
-  layer_set_hidden(menu_layer_get_layer(s_route_menu), true);
-  layer_add_child(window_layer, menu_layer_get_layer(s_route_menu));
+  menu_layer_set_click_config_onto_window(s_menu_layer, window);
+  s_menu_loading = S_TRUE;
+  layer_set_hidden(menu_layer_get_layer(s_menu_layer), true);
+  layer_add_child(window_layer, menu_layer_get_layer(s_menu_layer));
 }
 
 static void menu_window_unload(Window *window) {
-  menu_layer_destroy(s_route_menu);
-  
-  // Free up the heap memory used by menu item titles
-  for(int i=0; i<SECTIONS_LEN; i++){
-    for(int j=0; j<s_routes_len[i]; j++){
-      free(s_route_items[i][j].title);
-      free(s_route_items[i][j].subtitle);
-    }
-    s_routes_len[i] = 0;
-  }
+  menu_layer_destroy(s_menu_layer);
 }
 
+//========================================= ROUTE WINDOW ======================================================
+static void route_window_load(Window *window) {
+}
+
+static void route_window_unload(Window *window) {
+}
+
+//========================================= INIT ======================================================
 static void init(void) {
   s_menu_window = window_create();
   window_set_window_handlers(s_menu_window, (WindowHandlers) {
@@ -274,6 +273,15 @@ static void init(void) {
 static void deinit(void) {
 	app_message_deregister_callbacks();
 	window_destroy(s_menu_window);
+  
+    // Free up the heap memory used by menu item titles
+  for(int i=0; i<SECTIONS_LEN; i++){
+    for(int j=0; j<s_section_lens[i]; j++){
+      free(s_menu_items[i][j].title);
+      free(s_menu_items[i][j].subtitle);
+    }
+    s_section_lens[i] = 0;
+  }
 }
 
 int main( void ) {
