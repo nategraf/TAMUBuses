@@ -20,6 +20,13 @@ enum {
   STOP_TIMED = 2
 };
 
+enum {
+  MESSAGE_STATUS = 0,
+  MESSAGE_SET_INBOX_SIZE = 1,
+  MESSAGE_ROUTES = 2,
+  MESSAGE_ROUTE_PATTERN = 3,
+};
+
 typedef struct{
   char *title;
   char *subtitle;
@@ -56,7 +63,7 @@ static void send_inbox_size(){
 	DictionaryIterator *iter;
 	
 	app_message_outbox_begin(&iter);
-	dict_write_cstring(iter, MESSAGE_KEY_request, "SET_INBOX_SIZE");
+	dict_write_uint8(iter, MESSAGE_KEY_message_type, MESSAGE_SET_INBOX_SIZE);
   dict_write_uint16(iter, MESSAGE_KEY_inbox_size, INBOX_SIZE);
 	
 	dict_write_end(iter);
@@ -68,7 +75,7 @@ static void request_routes(){
 	DictionaryIterator *iter;
 	
 	app_message_outbox_begin(&iter);
-	dict_write_cstring(iter, MESSAGE_KEY_request, "ROUTES");
+	dict_write_uint8(iter, MESSAGE_KEY_message_type, MESSAGE_ROUTES);
 	
 	dict_write_end(iter);
   app_message_outbox_send();
@@ -79,7 +86,7 @@ static void request_route_pattern(const char *short_name){
 	DictionaryIterator *iter;
 	
 	app_message_outbox_begin(&iter);
-	dict_write_cstring(iter, MESSAGE_KEY_request, "ROUTE_PATTERN");
+	dict_write_uint8(iter, MESSAGE_KEY_message_type, MESSAGE_ROUTE_PATTERN);
   dict_write_cstring(iter, MESSAGE_KEY_route_short_name, short_name);
 	
 	dict_write_end(iter);
@@ -91,80 +98,95 @@ static void out_failed_handler(DictionaryIterator *failed, AppMessageResult reas
 }
 
 //========================================= INBOX HANDLING ======================================================
+static void routes_msg_handler(DictionaryIterator *received, void *context){
+  Tuple *tuple;
+  
+  // Save the route name on the heap for use in the menu
+  char *name = malloc(ROUTE_NAME_LEN); 
+  name[0] = '\0';
+  tuple = dict_find(received, MESSAGE_KEY_route_name);
+  if(tuple){
+    strcpy(name, tuple->value->cstring);
+  }
+
+  char *short_name = malloc(ROUTE_SHORT_NAME_LEN); 
+  short_name[0] = '\0';
+  tuple = dict_find(received, MESSAGE_KEY_route_short_name);
+  if(tuple){
+    strcpy(short_name, tuple->value->cstring);
+  }
+
+  uint8_t color_r = 0;
+  tuple = dict_find(received, MESSAGE_KEY_route_color_r);
+  if(tuple){
+    color_r = tuple->value->uint8;
+  }
+
+  uint8_t color_g = 0;
+  tuple = dict_find(received, MESSAGE_KEY_route_color_g);
+  if(tuple){
+    color_g = tuple->value->uint8;
+  }
+
+  uint8_t color_b = 0;
+  tuple = dict_find(received, MESSAGE_KEY_route_color_b);
+  if(tuple){
+    color_b = tuple->value->uint8;
+  }
+
+  int group = ROUTE_OTHER;
+  tuple = dict_find(received, MESSAGE_KEY_route_type);
+  if(tuple){
+    group = tuple->value->uint8;
+  }
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "Received route: %s - %s : group %d : rgb(%d, %d, %d)", short_name, name, group, color_r, color_g, color_b);
+
+  MenuItem *newItem = &s_menu_items[group][s_section_lens[group]];
+  newItem->title = short_name;
+  newItem->subtitle = name;
+  newItem->color_rgb[0] = color_r;
+  newItem->color_rgb[1] = color_g;
+  newItem->color_rgb[2] = color_b;
+  menu_layer_set_selected_index(s_menu_layer, MenuIndex(group, s_section_lens[group]), MenuRowAlignCenter, false);
+  s_section_lens[group]++;
+
+  // Show the route menu/hide the loading message
+  if(s_menu_loading){
+    s_menu_loading = S_FALSE;
+    layer_set_hidden(menu_layer_get_layer(s_menu_layer), false);
+    layer_set_hidden(text_layer_get_layer(s_menu_loading_text), true);
+  }
+
+  layer_mark_dirty(menu_layer_get_layer(s_menu_layer));
+}
+
 // Called when a message is received from PebbleKitJS
 static void in_received_handler(DictionaryIterator *received, void *context) {
 	Tuple *tuple;
-	
-  // Is it the ready notification?
-	tuple = dict_find(received, MESSAGE_KEY_jsStatus);
+	tuple = dict_find(received, MESSAGE_KEY_message_type);
 	if(tuple) {
-    uint32_t js_status = (int)tuple->value->uint32;
-		APP_LOG(APP_LOG_LEVEL_DEBUG, "Received status notification: %d", (int)js_status); 
-    if(js_status == 1) send_inbox_size();
-    else if(js_status == 0) request_routes();
-	}
-	
-  // Is it a route for addition to the menu?
-	tuple = dict_find(received, MESSAGE_KEY_request);
-	if(tuple) {
-    if(strcmp(tuple->value->cstring, "ROUTES") == 0){
-      // Save the route name on the heap for use in the menu
-      char *name = malloc(ROUTE_NAME_LEN); 
-      name[0] = '\0';
-      tuple = dict_find(received, MESSAGE_KEY_route_name);
-      if(tuple){
-        strcpy(name, tuple->value->cstring);
-      }
+    uint8_t msg_type = tuple->value->uint8;
+    switch(msg_type){
+      case MESSAGE_STATUS : 
+        tuple = dict_find(received, MESSAGE_KEY_js_status);
+        if(tuple) {
+          uint32_t js_status = (int)tuple->value->uint32;
+          APP_LOG(APP_LOG_LEVEL_DEBUG, "Received status notification: %d", (int)js_status); 
+          if(js_status == 1) send_inbox_size();
+          else if(js_status == 0) request_routes();
+        }
+      break;
       
-      char *short_name = malloc(ROUTE_SHORT_NAME_LEN); 
-      short_name[0] = '\0';
-      tuple = dict_find(received, MESSAGE_KEY_route_short_name);
-      if(tuple){
-        strcpy(short_name, tuple->value->cstring);
-      }
+      case MESSAGE_ROUTES :
+        routes_msg_handler(received, context);
+      break;
       
-      uint8_t color_r = 0;
-      tuple = dict_find(received, MESSAGE_KEY_route_color_r);
-      if(tuple){
-        color_r = tuple->value->uint8;
-      }
+      case MESSAGE_ROUTE_PATTERN :
+      break;
       
-      uint8_t color_g = 0;
-      tuple = dict_find(received, MESSAGE_KEY_route_color_g);
-      if(tuple){
-        color_g = tuple->value->uint8;
-      }
-      
-      uint8_t color_b = 0;
-      tuple = dict_find(received, MESSAGE_KEY_route_color_b);
-      if(tuple){
-        color_b = tuple->value->uint8;
-      }
-      
-      int group = ROUTE_OTHER;
-      tuple = dict_find(received, MESSAGE_KEY_route_type);
-      if(tuple){
-        group = tuple->value->uint8;
-      }
-  		APP_LOG(APP_LOG_LEVEL_DEBUG, "Received route: %s - %s : group %d : rgb(%d, %d, %d)", short_name, name, group, color_r, color_g, color_b);
-      
-      MenuItem *newItem = &s_menu_items[group][s_section_lens[group]];
-      newItem->title = short_name;
-      newItem->subtitle = name;
-      newItem->color_rgb[0] = color_r;
-      newItem->color_rgb[1] = color_g;
-      newItem->color_rgb[2] = color_b;
-      menu_layer_set_selected_index(s_menu_layer, MenuIndex(group, s_section_lens[group]), MenuRowAlignCenter, false);
-      s_section_lens[group]++;
-      
-      // Show the route menu/hide the loading message
-      if(s_menu_loading){
-        s_menu_loading = S_FALSE;
-        layer_set_hidden(menu_layer_get_layer(s_menu_layer), false);
-        layer_set_hidden(text_layer_get_layer(s_menu_loading_text), true);
-      }
-      
-      layer_mark_dirty(menu_layer_get_layer(s_menu_layer));
+      default :
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "Recieved a message of unexpected type: %d", msg_type);
+      break;
     }
 	}
 }

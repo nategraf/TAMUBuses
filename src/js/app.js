@@ -2,16 +2,23 @@ var keys = require('message_keys');
 var parseCSSColor = require('./csscolorparser').parseCSSColor;
 
 var RouteTypeEnum = {
-  ROUTE_ON_CAMPUS: 0,
-  ROUTE_OFF_CAMPUS: 1,
-  ROUTE_GAME_DAY: 2,
-  ROUTE_OTHER: 3
+  ON_CAMPUS: 0,
+  OFF_CAMPUS: 1,
+  GAME_DAY: 2,
+  OTHER: 3
 };
 
 var StopTypeEnum = {
-  STOP_WAYPOINT: 0,
-  STOP_UNTIMED: 1,
-  STOP_TIMED: 2
+  WAYPOINT: 0,
+  UNTIMED: 1,
+  TIMED: 2
+};
+
+var MessageTypeEnum = {
+  STATUS: 0,
+  SET_INBOX_SIZE: 1,
+  ROUTES: 2,
+  ROUTE_PATTERN: 3
 };
 
 var apiUrl = "http://transport.tamu.edu/BusRoutesFeed/api/";
@@ -73,7 +80,7 @@ function roughSizeOfObject( object ) {
 // Function to send a message to the Pebble using AppMessage API
 // We are currently only sending a message using the "status" appKey defined in appinfo.json/Settings     
 function sendStatusMessage() {
-	Pebble.sendAppMessage({"jsStatus": myStatus}, statusMessageSuccessHandler, statusMessageFailureHandler);
+  Pebble.sendAppMessage({"message_type": MessageTypeEnum.STATUS, "js_status": myStatus}, statusMessageSuccessHandler, statusMessageFailureHandler);
 }
 
 // Called when the message send attempt succeeds
@@ -123,99 +130,101 @@ function sendList(items) {
 // Called when incoming message from the Pebble is received
 // We are currently only checking the "message" appKey defined in appinfo.json/Settings
 Pebble.addEventListener("appmessage", function(e) {
-  console.log("Received Message: " + e.payload.request);
+  console.log("Received Message Type: " + e.payload.message_type);
+  switch(e.payload.message_type){
+    // Watch is letting the phone know what the max it can handle at once is
+    case MessageTypeEnum.SET_INBOX_SIZE:
+      pebbleInboxSize = e.payload.inbox_size;
+      console.log("Inbox size set to: " + pebbleInboxSize);
+      myStatus = 0;
+      sendStatusMessage();
+    break;
   
-  if(e.payload.request == "SET_INBOX_SIZE"){
-    pebbleInboxSize = e.payload.inbox_size;
-    console.log("Inbox size set to: " + pebbleInboxSize);
-    myStatus = 0;
-    sendStatusMessage();
-  }
+    // Watch is requesting a list of all routes
+    case MessageTypeEnum.ROUTES:
+      var req = new XMLHttpRequest();
+      var reqUrl = apiUrl + routesPath;
+      console.log("Requesting URL:" + reqUrl);
+      req.open("GET", reqUrl, true);
+      req.responseType = "json";
+      req.setRequestHeader("Cache-Control", "no-cache");
+      req.addEventListener("load", function() {
+        // Will be called when data is returned from the server
+        var resp = this.response;
+        var routes = [];
+        for (var i = 0; i < resp.length; i++) {
+          var route = {"message_type": MessageTypeEnum.ROUTES};
+          route.route_name = resp[i].Name.trim();
+          switch(resp[i].Group.trim()){
+            case "On Campus": route.route_type = RouteTypeEnum.ON_CAMPUS;
+              break;
+            case "Off Campus": route.route_type = RouteTypeEnum.OFF_CAMPUS;
+              break;
+            case "Game Day Routes": route.route_type = RouteTypeEnum.GAME_DAY;
+              break;
+            default: route.route_type = RouteTypeEnum.OTHER;
+              break;
+          }
+          route.route_short_name = resp[i].ShortName.trim();
+          if(resp[i].Color){
+            var route_color = parseCSSColor(resp[i].Color);
+            route.route_color_r = route_color[0];
+            route.route_color_g = route_color[1];
+            route.route_color_b = route_color[2];
+          }
+          routes.push(route);
+        }
+        console.log(JSON.stringify(routes));
+        console.log(JSON.stringify(resp));
+        sendList(routes);
+      });
+      req.send();
+    break;
   
-  // Watch is requesting a list of all routes
-  else if(e.payload.request === "ROUTES"){
-    var req = new XMLHttpRequest();
-    var reqUrl = apiUrl + routesPath;
-    console.log("Requesting URL:" + reqUrl);
-    req.open("GET", reqUrl, true);
-    req.responseType = "json";
-    req.setRequestHeader("Cache-Control", "no-cache");
-    req.addEventListener("load", function() {
-      // Will be called when data is returned from the server
-      var resp = this.response;
-      var routes = [];
-      for (var i = 0; i < resp.length; i++) {
-        var route = {"request": "ROUTES"};
-        route.route_name = resp[i].Name.trim();
-        switch(resp[i].Group.trim()){
-          case "On Campus": route.route_type = RouteTypeEnum.ROUTE_ON_CAMPUS;
-            break;
-          case "Off Campus": route.route_type = RouteTypeEnum.ROUTE_OFF_CAMPUS;
-            break;
-          case "Game Day Routes": route.route_type = RouteTypeEnum.ROUTE_GAME_DAY;
-            break;
-          default: route.route_type = RouteTypeEnum.ROUTE_OTHER;
-            break;
+    // Watch is requesting a today's pattern for route specified by route_short_name
+    case MessageTypeEnum.ROUTE_PATTERN:
+      var req = new XMLHttpRequest();
+      var today = new Date();
+      var reqUrl = apiUrl + patternPath.format(
+        e.payload.route_short_name, 
+        today.getFullYear(), 
+        today.getMonth()+1, 
+        today.getDate()
+      );
+      console.log("Requesting URL:" + reqUrl);
+      req.open("GET", reqUrl, true);
+      req.responseType = "json";
+      req.setRequestHeader("Cache-Control", "no-cache");
+      req.addEventListener("load", function() {
+        var resp = this.response;
+        var stops = [];
+        var minLong = Number.MAX_VALUE;
+        var minLat = Number.MAX_VALUE;
+        for(var i = 0; i < resp.length; i++) {
+          var stop = {"message_type": MessageTypeEnum.ROUTE_PATTERN};
+          stop.stop_type = StopTypeEnum.WAYPOINT;
+          if(resp[i].PointTypeCode == 1){
+            if(resp[i].Stop.IsTimePoint) stop.stop_type = StopTypeEnum.TIMED;
+            else stop.stop_type = StopTypeEnum.UNTIMED;
+            stop.stop_name = resp[i].Name; // A point is only named if the bus actually stops there
+          }
+          
+          stop.stop_long = resp[i].Longtitude;
+          stop.stop_lat = resp[i].Latitude;
+          minLong = Math.min(minLong, stop.stop_long);
+          minLat = Math.min(minLat, stop.stop_lat);
+          stops.push(stop);
         }
-        route.route_short_name = resp[i].ShortName.trim();
-        if(resp[i].Color){
-          var route_color = parseCSSColor(resp[i].Color);
-          route.route_color_r = route_color[0];
-          route.route_color_g = route_color[1];
-          route.route_color_b = route_color[2];
+        // Normalize the latitude and longitude so we can work with smaller numbers
+        for(var i = 0; i < stops.length; i++){
+          stops[i].stop_long -= minLong;
+          stops[i].stop_lat -= minLat;
         }
-        routes.push(route);
-      }
-      console.log(JSON.stringify(routes));
-      console.log(JSON.stringify(resp));
-      sendList(routes);
-    });
-    req.send();
-  }
-  
-  // Watch is requesting a today's pattern for route specified by route_short_name
-  else if(e.payload.request === "ROUTE_PATTERN"){
-    var req = new XMLHttpRequest();
-    var today = new Date();
-    var reqUrl = apiUrl + patternPath.format(
-      e.payload.route_short_name, 
-      today.getFullYear(), 
-      today.getMonth()+1, 
-      today.getDate()
-    );
-    console.log("Requesting URL:" + reqUrl);
-    req.open("GET", reqUrl, true);
-    req.responseType = "json";
-    req.setRequestHeader("Cache-Control", "no-cache");
-    req.addEventListener("load", function() {
-      var resp = this.response;
-      var stops = [];
-      var minLong = Number.MAX_VALUE;
-      var minLat = Number.MAX_VALUE;
-      for(var i = 0; i < resp.length; i++) {
-        var stop = {"request": "ROUTE_PATTERN"};
-        stop.stop_type = StopTypeEnum.STOP_WAYPOINT;
-        if(resp[i].PointTypeCode == 1){
-          if(resp[i].Stop.IsTimePoint) stop.stop_type = StopTypeEnum.STOP_TIMED;
-          else stop.stop_type = StopTypeEnum.STOP_UNTIMED;
-          stop.stop_name = resp[i].Name; // A point is only named if the bus actually stops there
-        }
-        
-        stop.stop_long = resp[i].Longtitude;
-        stop.stop_lat = resp[i].Latitude;
-        minLong = Math.min(minLong, stop.stop_long);
-        minLat = Math.min(minLat, stop.stop_lat);
-        stops.push(stop);
-      }
-      // Normalize the latitude and longitude so we can work with smaller numbers
-      for(var i = 0; i < stops.length; i++){
-        stops[i].stop_long -= minLong;
-        stops[i].stop_lat -= minLat;
-      }
-      console.log(JSON.stringify(stops));
-      console.log(JSON.stringify(resp));
-      sendList(stops);
-    });
-    req.send();
+        console.log(JSON.stringify(stops));
+        console.log(JSON.stringify(resp));
+        sendList(stops);
+      });
+      req.send();
+    break;
   }
 });

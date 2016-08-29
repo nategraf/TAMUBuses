@@ -10,8 +10,8 @@
         "displayName": "TAMU Buses",
         "enableMultiJS": true,
         "messageKeys": [
-            "jsStatus",
-            "request",
+            "js_status",
+            "message_type",
             "route_name",
             "route_type",
             "route_short_name",
