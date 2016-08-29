@@ -8,10 +8,16 @@
 #define OUTBOX_SIZE APP_MESSAGE_OUTBOX_SIZE_MINIMUM
 
 enum {
-  ON_CAMPUS_GROUP = 0,
-  OFF_CAMPUS_GROUP,
-  GAME_DAY_GROUP,
-  OTHER_GROUP
+  GROUP_ON_CAMPUS = 0,
+  GROUP_OFF_CAMPUS = 1,
+  GROUP_GAME_DAY = 2,
+  GROUP_OTHER = 3
+};
+
+enum {
+  STOP_WAYPOINT = 0,
+  STOP_UNTIMED = 1,
+  STOP_TIMED = 2
 };
 
 typedef struct{
@@ -142,15 +148,15 @@ static void in_received_handler(DictionaryIterator *received, void *context) {
       }
   		APP_LOG(APP_LOG_LEVEL_DEBUG, "Received route: %s - %s : %s : rgb(%d, %d, %d)", short_name, name, group, color_r, color_g, color_b);
       
-      int i = OTHER_GROUP;
+      int i = GROUP_OTHER;
       if(strcmp(group, "Off Campus") == 0){
-        i = OFF_CAMPUS_GROUP;
+        i = GROUP_OFF_CAMPUS;
       }
       else if(strcmp(group, "Game Day Routes") == 0){
-        i = GAME_DAY_GROUP;
+        i = GROUP_GAME_DAY;
       }
       else if(strcmp(group, "On Campus") == 0){
-        i = ON_CAMPUS_GROUP;
+        i = GROUP_ON_CAMPUS;
       }
       
       MenuItem *newItem = &s_menu_items[i][s_section_lens[i]];

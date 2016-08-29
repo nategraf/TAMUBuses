@@ -1,6 +1,19 @@
 var keys = require('message_keys');
 var parseCSSColor = require('./csscolorparser').parseCSSColor;
 
+var GroupTypeEnum = {
+  GROUP_ON_CAMPUS: 0,
+  GROUP_OFF_CAMPUS: 1,
+  GROUP_GAME_DAY: 2,
+  GROUP_OTHER: 3
+};
+
+var StopTypeEnum = {
+  STOP_WAYPOINT: 0,
+  STOP_UNTIMED: 1,
+  STOP_TIMED: 2
+};
+
 var apiUrl = "http://transport.tamu.edu/BusRoutesFeed/api/";
 var routesPath = "Routes";
 var patternPath = "route/{0}/pattern/{1}-{2}-{3}";
@@ -23,6 +36,7 @@ if (!String.prototype.format) {
 }
 
 // Used to figure if there is room to send more items
+// Courtesy of @tomwrong http://stackoverflow.com/questions/1248302/javascript-object-size
 function roughSizeOfObject( object ) {
 
     var objectList = [];
@@ -171,13 +185,12 @@ Pebble.addEventListener("appmessage", function(e) {
       var minLat = Number.MAX_VALUE;
       for(var i = 0; i < resp.length; i++) {
         var stop = {"request": "ROUTE_PATTERN"};
-        var stopType = 0; // STOP_WAY_POINT
+        stop.stop_type = StopTypeEnum.STOP_WAYPOINT;
         if(resp[i].PointTypeCode == 1){
-          if(resp[i].Stop.IsTimePoint) stopType = 2; // STOP_TIME_POINT
-          else stopType = 1; // STOP_UNTIMED_POINT
-          stop.stop_name = resp[i].Name;
+          if(resp[i].Stop.IsTimePoint) stop.stop_type = StopTypeEnum.STOP_TIMED;
+          else stop.stop_type = StopTypeEnum.STOP_UNTIMED;
+          stop.stop_name = resp[i].Name; // A point is only named if the bus actually stops there
         }
-        stop.stop_type = stopType;
         
         stop.stop_long = resp[i].Longtitude;
         stop.stop_lat = resp[i].Latitude;
@@ -189,7 +202,6 @@ Pebble.addEventListener("appmessage", function(e) {
         stops[i].stop_long -= minLong;
         stops[i].stop_lat -= minLat;
       }
-      console.log("minLong {0}, minLat {1}".format(minLong, minLat));
       console.log(JSON.stringify(stops));
       console.log(JSON.stringify(resp));
       sendList(stops);
