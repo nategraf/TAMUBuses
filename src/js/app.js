@@ -1,11 +1,11 @@
 var keys = require('message_keys');
 var parseCSSColor = require('./csscolorparser').parseCSSColor;
 
-var GroupTypeEnum = {
-  GROUP_ON_CAMPUS: 0,
-  GROUP_OFF_CAMPUS: 1,
-  GROUP_GAME_DAY: 2,
-  GROUP_OTHER: 3
+var RouteTypeEnum = {
+  ROUTE_ON_CAMPUS: 0,
+  ROUTE_OFF_CAMPUS: 1,
+  ROUTE_GAME_DAY: 2,
+  ROUTE_OTHER: 3
 };
 
 var StopTypeEnum = {
@@ -147,7 +147,16 @@ Pebble.addEventListener("appmessage", function(e) {
       for (var i = 0; i < resp.length; i++) {
         var route = {"request": "ROUTES"};
         route.route_name = resp[i].Name.trim();
-        route.route_group = resp[i].Group.trim();
+        switch(resp[i].Group.trim()){
+          case "On Campus": route.route_type = RouteTypeEnum.ROUTE_ON_CAMPUS;
+            break;
+          case "Off Campus": route.route_type = RouteTypeEnum.ROUTE_OFF_CAMPUS;
+            break;
+          case "Game Day Routes": route.route_type = RouteTypeEnum.ROUTE_GAME_DAY;
+            break;
+          default: route.route_type = RouteTypeEnum.ROUTE_OTHER;
+            break;
+        }
         route.route_short_name = resp[i].ShortName.trim();
         if(resp[i].Color){
           var route_color = parseCSSColor(resp[i].Color);
@@ -198,6 +207,7 @@ Pebble.addEventListener("appmessage", function(e) {
         minLat = Math.min(minLat, stop.stop_lat);
         stops.push(stop);
       }
+      // Normalize the latitude and longitude so we can work with smaller numbers
       for(var i = 0; i < stops.length; i++){
         stops[i].stop_long -= minLong;
         stops[i].stop_lat -= minLat;

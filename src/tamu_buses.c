@@ -8,10 +8,10 @@
 #define OUTBOX_SIZE APP_MESSAGE_OUTBOX_SIZE_MINIMUM
 
 enum {
-  GROUP_ON_CAMPUS = 0,
-  GROUP_OFF_CAMPUS = 1,
-  GROUP_GAME_DAY = 2,
-  GROUP_OTHER = 3
+  ROUTE_ON_CAMPUS = 0,
+  ROUTE_OFF_CAMPUS = 1,
+  ROUTE_GAME_DAY = 2,
+  ROUTE_OTHER = 3
 };
 
 enum {
@@ -141,32 +141,21 @@ static void in_received_handler(DictionaryIterator *received, void *context) {
         color_b = tuple->value->uint8;
       }
       
-      char *group = "\0";
-      tuple = dict_find(received, MESSAGE_KEY_route_group);
+      int group = ROUTE_OTHER;
+      tuple = dict_find(received, MESSAGE_KEY_route_type);
       if(tuple){
-        group = tuple->value->cstring;
+        group = tuple->value->uint8;
       }
-  		APP_LOG(APP_LOG_LEVEL_DEBUG, "Received route: %s - %s : %s : rgb(%d, %d, %d)", short_name, name, group, color_r, color_g, color_b);
+  		APP_LOG(APP_LOG_LEVEL_DEBUG, "Received route: %s - %s : group %d : rgb(%d, %d, %d)", short_name, name, group, color_r, color_g, color_b);
       
-      int i = GROUP_OTHER;
-      if(strcmp(group, "Off Campus") == 0){
-        i = GROUP_OFF_CAMPUS;
-      }
-      else if(strcmp(group, "Game Day Routes") == 0){
-        i = GROUP_GAME_DAY;
-      }
-      else if(strcmp(group, "On Campus") == 0){
-        i = GROUP_ON_CAMPUS;
-      }
-      
-      MenuItem *newItem = &s_menu_items[i][s_section_lens[i]];
+      MenuItem *newItem = &s_menu_items[group][s_section_lens[group]];
       newItem->title = short_name;
       newItem->subtitle = name;
       newItem->color_rgb[0] = color_r;
       newItem->color_rgb[1] = color_g;
       newItem->color_rgb[2] = color_b;
-      menu_layer_set_selected_index(s_menu_layer, MenuIndex(i, s_section_lens[i]), MenuRowAlignCenter, false);
-      s_section_lens[i]++;
+      menu_layer_set_selected_index(s_menu_layer, MenuIndex(group, s_section_lens[group]), MenuRowAlignCenter, false);
+      s_section_lens[group]++;
       
       // Show the route menu/hide the loading message
       if(s_menu_loading){

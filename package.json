@@ -13,7 +13,7 @@
             "jsStatus",
             "request",
             "route_name",
-            "route_group",
+            "route_type",
             "route_short_name",
             "inbox_size",
             "route_color_r",
