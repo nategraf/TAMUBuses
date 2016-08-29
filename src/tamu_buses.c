@@ -21,9 +21,8 @@ typedef struct{
 
 static Window *s_menu_window;
 static MenuLayer *s_menu_layer;
-static TextLayer *s_menu_loading_text;
 
-static GRect s_menu_window_frame;
+static TextLayer *s_menu_loading_text;
 static GRect s_menu_loading_frame;
 
 static int s_section_lens[SECTIONS_LEN] = {0, 0, 0, 0};
@@ -200,10 +199,10 @@ static int16_t get_cell_height_callback(MenuLayer *menu_layer, MenuIndex *cell_i
 //========================================= MENU WINDOW ======================================================
 static void menu_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
-  s_menu_window_frame = layer_get_frame(window_layer);
+  GRect window_frame = layer_get_frame(window_layer);
     
   // Create the loading text
-  s_menu_loading_text = text_layer_create(s_menu_window_frame);
+  s_menu_loading_text = text_layer_create(window_frame);
   text_layer_set_background_color(s_menu_loading_text, GColorClear);
   text_layer_set_text_color(s_menu_loading_text, GColorBlack);
   text_layer_set_text_alignment(s_menu_loading_text, GTextAlignmentCenter);
@@ -212,14 +211,14 @@ static void menu_window_load(Window *window) {
   
   // Center the loading text
   GSize loading_text_size = text_layer_get_content_size(s_menu_loading_text);
-  s_menu_loading_frame = s_menu_window_frame;
-  s_menu_loading_frame.origin.y = (s_menu_window_frame.size.h - loading_text_size.h)/2;
+  s_menu_loading_frame = window_frame;
+  s_menu_loading_frame.origin.y = (window_frame.size.h - loading_text_size.h)/2;
   
   // Move the loading text to its new position
   layer_set_frame(text_layer_get_layer(s_menu_loading_text), s_menu_loading_frame);
   layer_mark_dirty(text_layer_get_layer(s_menu_loading_text));
     
-  s_menu_layer = menu_layer_create(s_menu_window_frame);
+  s_menu_layer = menu_layer_create(window_frame);
   menu_layer_set_callbacks(s_menu_layer, NULL, (MenuLayerCallbacks){
     .get_num_sections = menu_get_num_sections_callback,
     .get_num_rows = menu_get_num_rows_callback,
@@ -243,6 +242,7 @@ static void menu_window_unload(Window *window) {
 
 //========================================= ROUTE WINDOW ======================================================
 static void route_window_load(Window *window) {
+  
 }
 
 static void route_window_unload(Window *window) {
