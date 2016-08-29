@@ -19,11 +19,11 @@ typedef struct{
   char *subtitle;
 } MenuItem;
 
-static Window *s_window;
+static Window *s_menu_window;
 static MenuLayer *s_route_menu;
 static TextLayer *s_loading_text;
 
-static GRect s_window_frame;
+static GRect s_menu_window_frame;
 static GRect s_loading_frame;
 
 static int s_routes_len[SECTIONS_LEN] = {0, 0, 0, 0};
@@ -198,12 +198,12 @@ static int16_t get_cell_height_callback(MenuLayer *menu_layer, MenuIndex *cell_i
 #endif  
 
 //========================================= MAIN ======================================================
-static void main_window_load(Window *window) {
+static void menu_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
-  s_window_frame = layer_get_frame(window_layer);
+  s_menu_window_frame = layer_get_frame(window_layer);
     
   // Create the loading text
-  s_loading_text = text_layer_create(s_window_frame);
+  s_loading_text = text_layer_create(s_menu_window_frame);
   text_layer_set_background_color(s_loading_text, GColorClear);
   text_layer_set_text_color(s_loading_text, GColorBlack);
   text_layer_set_text_alignment(s_loading_text, GTextAlignmentCenter);
@@ -212,14 +212,14 @@ static void main_window_load(Window *window) {
   
   // Center the loading text
   GSize loading_text_size = text_layer_get_content_size(s_loading_text);
-  s_loading_frame = s_window_frame;
-  s_loading_frame.origin.y = (s_window_frame.size.h - loading_text_size.h)/2;
+  s_loading_frame = s_menu_window_frame;
+  s_loading_frame.origin.y = (s_menu_window_frame.size.h - loading_text_size.h)/2;
   
   // Move the loading text to its new position
   layer_set_frame(text_layer_get_layer(s_loading_text), s_loading_frame);
   layer_mark_dirty(text_layer_get_layer(s_loading_text));
     
-  s_route_menu = menu_layer_create(s_window_frame);
+  s_route_menu = menu_layer_create(s_menu_window_frame);
   menu_layer_set_callbacks(s_route_menu, NULL, (MenuLayerCallbacks){
     .get_num_sections = menu_get_num_sections_callback,
     .get_num_rows = menu_get_num_rows_callback,
@@ -237,17 +237,26 @@ static void main_window_load(Window *window) {
   layer_add_child(window_layer, menu_layer_get_layer(s_route_menu));
 }
 
-static void main_window_unload(Window *window) {
+static void menu_window_unload(Window *window) {
   menu_layer_destroy(s_route_menu);
+  
+  // Free up the heap memory used by menu item titles
+  for(int i=0; i<SECTIONS_LEN; i++){
+    for(int j=0; j<s_routes_len[i]; j++){
+      free(s_route_items[i][j].title);
+      free(s_route_items[i][j].subtitle);
+    }
+    s_routes_len[i] = 0;
+  }
 }
 
 static void init(void) {
-  s_window = window_create();
-  window_set_window_handlers(s_window, (WindowHandlers) {
-    .load = main_window_load,
-    .unload = main_window_unload
+  s_menu_window = window_create();
+  window_set_window_handlers(s_menu_window, (WindowHandlers) {
+    .load = menu_window_load,
+    .unload = menu_window_unload
   });
-	window_stack_push(s_window, true);
+	window_stack_push(s_menu_window, true);
 	
   //window_set_click_config_provider(s_window, (ClickConfigProvider) config_provider);
   
@@ -264,10 +273,7 @@ static void init(void) {
 
 static void deinit(void) {
 	app_message_deregister_callbacks();
-	window_destroy(s_window);
-
-  //TODO: free(name);
-  //TODO: free(short_name);
+	window_destroy(s_menu_window);
 }
 
 int main( void ) {
