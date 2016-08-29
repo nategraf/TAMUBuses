@@ -4,6 +4,8 @@
 #define SECTIONS_LEN 4
 #define ROUTE_SHORT_NAME_LEN 8
 #define ROUTE_NAME_LEN 48
+#define INBOX_SIZE APP_MESSAGE_INBOX_SIZE_MINIMUM
+#define OUTBOX_SIZE APP_MESSAGE_OUTBOX_SIZE_MINIMUM
 
 enum {
   ON_CAMPUS_GROUP = 0,
@@ -28,6 +30,27 @@ static int s_routes_len[SECTIONS_LEN] = {0, 0, 0, 0};
 static char *s_section_titles[SECTIONS_LEN] = {"On Campus", "Off Campus", "Game Day", "Other"};
 static MenuItem s_route_items[SECTIONS_LEN][ROUTES_LEN];
 
+//========================================= CLICK HANDLING ======================================================
+void down_single_click_handler(ClickRecognizerRef recognizer, void *context) {
+}
+
+void config_provider(Window *window) {
+  window_single_click_subscribe(BUTTON_ID_SELECT, down_single_click_handler);
+}
+
+//========================================= OUTBOX HANDLING ======================================================
+// Write message to buffer & send
+static void send_inbox_size(){
+	DictionaryIterator *iter;
+	
+	app_message_outbox_begin(&iter);
+	dict_write_cstring(iter, MESSAGE_KEY_request, "SET_INBOX_SIZE");
+  dict_write_uint16(iter, MESSAGE_KEY_inbox_size, INBOX_SIZE);
+	
+	dict_write_end(iter);
+  app_message_outbox_send();
+}
+
 // Write message to buffer & send
 static void request_routes(){
 	DictionaryIterator *iter;
@@ -39,6 +62,7 @@ static void request_routes(){
   app_message_outbox_send();
 }
 
+// Request the info to populate the route menu
 static void request_route_info(const char *short_name){
 	DictionaryIterator *iter;
 	
@@ -50,23 +74,22 @@ static void request_route_info(const char *short_name){
   app_message_outbox_send();
 }
 
-void down_single_click_handler(ClickRecognizerRef recognizer, void *context) {
+// Called when PebbleKitJS does not acknowledge receipt of a message
+static void out_failed_handler(DictionaryIterator *failed, AppMessageResult reason, void *context) {
 }
 
-void config_provider(Window *window) {
-  window_single_click_subscribe(BUTTON_ID_SELECT, down_single_click_handler);
-}
-
-//========================================= MESSAGE HANDLING ======================================================
+//========================================= INBOX HANDLING ======================================================
 // Called when a message is received from PebbleKitJS
 static void in_received_handler(DictionaryIterator *received, void *context) {
 	Tuple *tuple;
 	
   // Is it the ready notification?
-	tuple = dict_find(received, MESSAGE_KEY_jsReady);
+	tuple = dict_find(received, MESSAGE_KEY_jsStatus);
 	if(tuple) {
-		APP_LOG(APP_LOG_LEVEL_DEBUG, "Received ready notification: %d", (int)tuple->value->uint32); 
-    request_routes();
+    uint32_t js_status = (int)tuple->value->uint32;
+		APP_LOG(APP_LOG_LEVEL_DEBUG, "Received status notification: %d", (int)js_status); 
+    if(js_status == 1) send_inbox_size();
+    else if(js_status == 0) request_routes();
 	}
 	
   // Is it a route for addition to the menu?
@@ -120,10 +143,6 @@ static void in_received_handler(DictionaryIterator *received, void *context) {
 
 // Called when an incoming message from PebbleKitJS is dropped
 static void in_dropped_handler(AppMessageResult reason, void *context) {	
-}
-
-// Called when PebbleKitJS does not acknowledge receipt of a message
-static void out_failed_handler(DictionaryIterator *failed, AppMessageResult reason, void *context) {
 }
 
 //========================================= MENU CALLBACKS ======================================================
@@ -231,8 +250,8 @@ static void init(void) {
 	app_message_register_outbox_failed(out_failed_handler);
 
   // Initialize AppMessage inbox and outbox buffers with a suitable size
-  int inbox_size = APP_MESSAGE_INBOX_SIZE_MINIMUM;
-  int outbox_size = APP_MESSAGE_OUTBOX_SIZE_MINIMUM;
+  int inbox_size = INBOX_SIZE;
+  int outbox_size = OUTBOX_SIZE;
   app_message_open(inbox_size, outbox_size);
 }
 

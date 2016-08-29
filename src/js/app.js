@@ -2,31 +2,33 @@ var keys = require('message_keys');
 
 var apiUrl = "http://transport.tamu.edu/BusRoutesFeed/api/";
 var routesPath = "Routes";
+var myStatus = 1;
 
 var retryWaitOriginal = 50;
 var retryWait = retryWaitOriginal;
+var pebbleInboxSize = 124; // The defult minimum
 
 // Function to send a message to the Pebble using AppMessage API
 // We are currently only sending a message using the "status" appKey defined in appinfo.json/Settings     
-function sendReadyMessage() {
-	Pebble.sendAppMessage({"jsReady": 1}, readyMessageSuccessHandler, readyMessageFailureHandler);
+function sendStatusMessage() {
+	Pebble.sendAppMessage({"jsStatus": myStatus}, statusMessageSuccessHandler, statusMessageFailureHandler);
 }
 
 // Called when the message send attempt succeeds
-function readyMessageSuccessHandler() {
+function statusMessageSuccessHandler() {
   console.log("Ready message send succeeded.");  
 }
 
 // Called when the message send attempt fails
-function readyMessageFailureHandler() {
+function statusMessageFailureHandler() {
   console.log("Ready message send failed.");
-  sendReadyMessage();
+  sendStatusMessage();
 }
 
 // Called when JS is ready
 Pebble.addEventListener("ready", function(e) {
   console.log("JS is ready!");
-  sendReadyMessage();
+  sendStatusMessage();
 });
 
 // Used when sending a list of items
@@ -61,7 +63,14 @@ function sendList(items) {
 Pebble.addEventListener("appmessage", function(e) {
   console.log("Received Message: " + e.payload.request);
   
-  if(e.payload.request == "ROUTES"){
+  if(e.payload.request == "SET_INBOX_SIZE"){
+    pebbleInboxSize = e.payload.inbox_size;
+    console.log("Inbox size set to: " + pebbleInboxSize);
+    myStatus = 0;
+    sendStatusMessage();
+  }
+  
+  else if(e.payload.request == "ROUTES"){
     var req = new XMLHttpRequest();
     var reqUrl = apiUrl + routesPath;
     req.open("GET", reqUrl, true);

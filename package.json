@@ -10,11 +10,12 @@
         "displayName": "TAMU Buses",
         "enableMultiJS": true,
         "messageKeys": [
-            "jsReady",
+            "jsStatus",
             "request",
             "route_name",
             "route_group",
-            "route_short_name"
+            "route_short_name",
+            "inbox_size"
         ],
         "projectType": "native",
         "resources": {
