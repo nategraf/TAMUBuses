@@ -1,0 +1,35 @@
+{
+    "author": "nategraf1@gmail.com",
+    "dependencies": {},
+    "keywords": [],
+    "name": "tamu-buses",
+    "pebble": {
+        "capabilities": [
+            ""
+        ],
+        "displayName": "TAMU Buses",
+        "enableMultiJS": true,
+        "messageKeys": [
+            "jsReady",
+            "request",
+            "route_name",
+            "route_group",
+            "route_short_name"
+        ],
+        "projectType": "native",
+        "resources": {
+            "media": []
+        },
+        "sdkVersion": "3",
+        "targetPlatforms": [
+            "aplite",
+            "basalt",
+            "chalk"
+        ],
+        "uuid": "4caa45eb-bdc0-49ad-9a57-f42302aaff6d",
+        "watchapp": {
+            "watchface": false
+        }
+    },
+    "version": "1.0.0"
+}
