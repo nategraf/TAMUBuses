@@ -15,7 +15,10 @@
             "route_name",
             "route_group",
             "route_short_name",
-            "inbox_size"
+            "inbox_size",
+            "route_color_r",
+            "route_color_g",
+            "route_color_b"
         ],
         "projectType": "native",
         "resources": {

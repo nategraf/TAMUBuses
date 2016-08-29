@@ -17,6 +17,7 @@ enum {
 typedef struct{
   char *title;
   char *subtitle;
+  uint8_t color_rgb[3];
 } MenuItem;
 
 // Menu variables
@@ -116,12 +117,30 @@ static void in_received_handler(DictionaryIterator *received, void *context) {
         strcpy(short_name, tuple->value->cstring);
       }
       
+      uint8_t color_r = 0;
+      tuple = dict_find(received, MESSAGE_KEY_route_color_r);
+      if(tuple){
+        color_r = tuple->value->uint8;
+      }
+      
+      uint8_t color_g = 0;
+      tuple = dict_find(received, MESSAGE_KEY_route_color_g);
+      if(tuple){
+        color_g = tuple->value->uint8;
+      }
+      
+      uint8_t color_b = 0;
+      tuple = dict_find(received, MESSAGE_KEY_route_color_b);
+      if(tuple){
+        color_b = tuple->value->uint8;
+      }
+      
       char *group = "\0";
       tuple = dict_find(received, MESSAGE_KEY_route_group);
       if(tuple){
         group = tuple->value->cstring;
       }
-  		APP_LOG(APP_LOG_LEVEL_DEBUG, "Received route: %s - %s : %s", short_name, name, group);
+  		APP_LOG(APP_LOG_LEVEL_DEBUG, "Received route: %s - %s : %s : rgb(%d, %d, %d)", short_name, name, group, color_r, color_g, color_b);
       
       int i = OTHER_GROUP;
       if(strcmp(group, "Off Campus") == 0){
@@ -134,8 +153,12 @@ static void in_received_handler(DictionaryIterator *received, void *context) {
         i = ON_CAMPUS_GROUP;
       }
       
-      s_menu_items[i][s_section_lens[i]].title = short_name;
-      s_menu_items[i][s_section_lens[i]].subtitle = name;
+      MenuItem *newItem = &s_menu_items[i][s_section_lens[i]];
+      newItem->title = short_name;
+      newItem->subtitle = name;
+      newItem->color_rgb[0] = color_r;
+      newItem->color_rgb[1] = color_g;
+      newItem->color_rgb[2] = color_b;
       menu_layer_set_selected_index(s_menu_layer, MenuIndex(i, s_section_lens[i]), MenuRowAlignCenter, false);
       s_section_lens[i]++;
       
@@ -177,7 +200,15 @@ static void menu_draw_header_callback(GContext* gctx, const Layer *cell_layer, u
 static void menu_draw_row_callback(GContext* gctx, const Layer *cell_layer, MenuIndex *cell_index, void *context) {
   uint16_t i = cell_index->section;
   uint16_t j = cell_index->row;
-  menu_cell_basic_draw(gctx, cell_layer, s_menu_items[i][j].title, s_menu_items[i][j].subtitle, NULL);
+  MenuItem *item = &s_menu_items[i][j];
+  #ifdef PBL_COLOR
+  if (menu_layer_is_index_selected(s_menu_layer, cell_index)) {
+    graphics_context_set_fill_color(gctx, GColorFromRGB(item->color_rgb[0], item->color_rgb[1], item->color_rgb[2]));
+    GSize size = layer_get_frame(cell_layer).size;
+    graphics_fill_rect(gctx, GRect(0, 0, size.w, size.h), 0, 0);
+  }
+  #endif
+  menu_cell_basic_draw(gctx, cell_layer, item->title, item->subtitle, NULL);
 }
 
 static void enter_route_window(); // Defined in route window functions
@@ -242,10 +273,6 @@ static void menu_window_load(Window *window) {
 static void menu_window_unload(Window *window) {
   menu_layer_destroy(s_menu_layer);
   text_layer_destroy(s_menu_loading_text);
-}
-
-static void return_to_menu(){
-  window_stack_pop(true);
 }
 
 //========================================= ROUTE WINDOW ======================================================

@@ -1,4 +1,5 @@
 var keys = require('message_keys');
+var parseCSSColor = require('./csscolorparser').parseCSSColor;
 
 var apiUrl = "http://transport.tamu.edu/BusRoutesFeed/api/";
 var routesPath = "Routes";
@@ -116,14 +117,21 @@ Pebble.addEventListener("appmessage", function(e) {
       var resp = this.response;
       var routes = [];
       for (var i = 0; i < resp.length; i++) {
-        routes.push({
-          "route_name": resp[i].Name.trim(),
-          "route_group": resp[i].Group.trim(),
-          "route_short_name": resp[i].ShortName.trim(),
-          "request": "ROUTES"
-        });
+        var route = {};
+        route.route_name = resp[i].Name.trim();
+        route.route_group = resp[i].Group.trim();
+        route.route_short_name = resp[i].ShortName.trim();
+        route.request = "ROUTES";
+        if(resp[i].Color){
+          var route_color = parseCSSColor(resp[i].Color);
+          route.route_color_r = route_color[0];
+          route.route_color_g = route_color[1];
+          route.route_color_b = route_color[2];
+        }
+        routes.push(route);
       }
-      console.dir(routes);
+      console.log(JSON.stringify(routes));
+      console.log(JSON.stringify(resp));
       sendList(routes);
     });
     req.send();
