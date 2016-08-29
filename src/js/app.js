@@ -3,12 +3,24 @@ var parseCSSColor = require('./csscolorparser').parseCSSColor;
 
 var apiUrl = "http://transport.tamu.edu/BusRoutesFeed/api/";
 var routesPath = "Routes";
+var patternPath = "route/{0}/pattern/{1}-{2}-{3}";
 var myStatus = 1;
 
 var retryWaitOriginal = 50;
 var retryWait = retryWaitOriginal;
 var pebbleInboxSize = 124; // The defult minimum
 var pebbleUsedInbox = 0;
+
+// String formating function 
+// Courtesy of @fearphage http://stackoverflow.com/questions/610406/javascript-equivalent-to-printf-string-format/4673436#4673436
+if (!String.prototype.format) {
+  String.prototype.format = function() {
+    var args = arguments;
+    return this.replace(/{(\d+)}/g, function(match, number) { 
+      return typeof args[number] != 'undefined' ? args[number] : match;
+    });
+  };
+}
 
 // Used to figure if there is room to send more items
 function roughSizeOfObject( object ) {
@@ -106,9 +118,11 @@ Pebble.addEventListener("appmessage", function(e) {
     sendStatusMessage();
   }
   
-  else if(e.payload.request == "ROUTES"){
+  // Watch is requesting a list of all routes
+  else if(e.payload.request === "ROUTES"){
     var req = new XMLHttpRequest();
     var reqUrl = apiUrl + routesPath;
+    console.log("Requesting URL:" + reqUrl);
     req.open("GET", reqUrl, true);
     req.responseType = "json";
     req.setRequestHeader("Cache-Control", "no-cache");
@@ -117,11 +131,10 @@ Pebble.addEventListener("appmessage", function(e) {
       var resp = this.response;
       var routes = [];
       for (var i = 0; i < resp.length; i++) {
-        var route = {};
+        var route = {"request": "ROUTES"};
         route.route_name = resp[i].Name.trim();
         route.route_group = resp[i].Group.trim();
         route.route_short_name = resp[i].ShortName.trim();
-        route.request = "ROUTES";
         if(resp[i].Color){
           var route_color = parseCSSColor(resp[i].Color);
           route.route_color_r = route_color[0];
@@ -137,7 +150,50 @@ Pebble.addEventListener("appmessage", function(e) {
     req.send();
   }
   
-  else if(e.payload.request == "ROUTE_INFO"){
-    
+  // Watch is requesting a today's pattern for route specified by route_short_name
+  else if(e.payload.request === "ROUTE_PATTERN"){
+    var req = new XMLHttpRequest();
+    var today = new Date();
+    var reqUrl = apiUrl + patternPath.format(
+      e.payload.route_short_name, 
+      today.getFullYear(), 
+      today.getMonth()+1, 
+      today.getDate()
+    );
+    console.log("Requesting URL:" + reqUrl);
+    req.open("GET", reqUrl, true);
+    req.responseType = "json";
+    req.setRequestHeader("Cache-Control", "no-cache");
+    req.addEventListener("load", function() {
+      var resp = this.response;
+      var stops = [];
+      var minLong = Number.MAX_VALUE;
+      var minLat = Number.MAX_VALUE;
+      for(var i = 0; i < resp.length; i++) {
+        var stop = {"request": "ROUTE_PATTERN"};
+        var stopType = 0; // STOP_WAY_POINT
+        if(resp[i].PointTypeCode == 1){
+          if(resp[i].Stop.IsTimePoint) stopType = 2; // STOP_TIME_POINT
+          else stopType = 1; // STOP_UNTIMED_POINT
+          stop.stop_name = resp[i].Name;
+        }
+        stop.stop_type = stopType;
+        
+        stop.stop_long = resp[i].Longtitude;
+        stop.stop_lat = resp[i].Latitude;
+        minLong = Math.min(minLong, stop.stop_long);
+        minLat = Math.min(minLat, stop.stop_lat);
+        stops.push(stop);
+      }
+      for(var i = 0; i < stops.length; i++){
+        stops[i].stop_long -= minLong;
+        stops[i].stop_lat -= minLat;
+      }
+      console.log("minLong {0}, minLat {1}".format(minLong, minLat));
+      console.log(JSON.stringify(stops));
+      console.log(JSON.stringify(resp));
+      sendList(stops);
+    });
+    req.send();
   }
 });

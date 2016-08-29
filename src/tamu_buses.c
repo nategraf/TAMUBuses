@@ -69,11 +69,11 @@ static void request_routes(){
 }
 
 // Request the info to populate the route menu
-static void request_route_info(const char *short_name){
+static void request_route_pattern(const char *short_name){
 	DictionaryIterator *iter;
 	
 	app_message_outbox_begin(&iter);
-	dict_write_cstring(iter, MESSAGE_KEY_request, "ROUTE_INFO");
+	dict_write_cstring(iter, MESSAGE_KEY_request, "ROUTE_PATTERN");
   dict_write_cstring(iter, MESSAGE_KEY_route_short_name, short_name);
 	
 	dict_write_end(iter);
@@ -279,6 +279,7 @@ static void route_window_load(Window *window) {
   GRect window_frame = layer_get_frame(window_layer);
   
   APP_LOG(APP_LOG_LEVEL_DEBUG, "Loading route window"); 
+  request_route_pattern(s_selected_route->title);
   
   // Create the route name text
   s_route_name_text = text_layer_create(window_frame);
@@ -286,7 +287,7 @@ static void route_window_load(Window *window) {
   text_layer_set_text_color(s_route_name_text, GColorBlack);
   text_layer_set_text_alignment(s_route_name_text, GTextAlignmentCenter);
   if(s_selected_route){
-    text_layer_set_text(s_route_name_text, s_selected_route->title);
+    text_layer_set_text(s_route_name_text, s_selected_route->subtitle);
   }
   else{
     text_layer_set_text(s_route_name_text, "No route selected");
