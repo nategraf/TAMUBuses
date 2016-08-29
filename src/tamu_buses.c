@@ -80,7 +80,7 @@ static void in_received_handler(DictionaryIterator *received, void *context) {
       }
       
       char *short_name = malloc(ROUTE_SHORT_NAME_LEN); 
-      name[0] = '\0';
+      short_name[0] = '\0';
       tuple = dict_find(received, MESSAGE_KEY_route_short_name);
       if(tuple){
         strcpy(short_name, tuple->value->cstring);
@@ -91,7 +91,7 @@ static void in_received_handler(DictionaryIterator *received, void *context) {
       if(tuple){
         group = tuple->value->cstring;
       }
-  		APP_LOG(APP_LOG_LEVEL_DEBUG, "Received route: %s : %s", name, group);
+  		APP_LOG(APP_LOG_LEVEL_DEBUG, "Received route: %s - %s : %s", short_name, name, group);
       
       int i = OTHER_GROUP;
       if(strcmp(group, "Off Campus") == 0){
@@ -177,12 +177,15 @@ static void main_window_load(Window *window) {
   menu_layer_set_callbacks(s_route_menu, NULL, (MenuLayerCallbacks){
     .get_num_sections = menu_get_num_sections_callback,
     .get_num_rows = menu_get_num_rows_callback,
-    .get_header_height = PBL_IF_RECT_ELSE(menu_get_header_height_callback, NULL),
-    .draw_header = PBL_IF_RECT_ELSE(menu_draw_header_callback, NULL),
+    .get_header_height = menu_get_header_height_callback,
+    .draw_header = menu_draw_header_callback,
     .draw_row = menu_draw_row_callback,
     .select_click = menu_select_callback,
     .get_cell_height = PBL_IF_ROUND_ELSE(get_cell_height_callback, NULL),
   });
+  
+  // Bind the menu layer's click config provider to the window for interactivity
+  menu_layer_set_click_config_onto_window(s_route_menu, window);
   
   layer_add_child(window_layer, menu_layer_get_layer(s_route_menu));
 }
