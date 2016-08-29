@@ -19,8 +19,10 @@ typedef struct{
 
 static Window *s_window;
 static MenuLayer *s_route_menu;
+static TextLayer *s_loading_text;
 
 static GRect s_window_frame;
+static GRect s_loading_frame;
 
 static int s_routes_len[SECTIONS_LEN] = {0, 0, 0, 0};
 static char *s_section_titles[SECTIONS_LEN] = {"On Campus", "Off Campus", "Game Day", "Other"};
@@ -71,6 +73,9 @@ static void in_received_handler(DictionaryIterator *received, void *context) {
 	tuple = dict_find(received, MESSAGE_KEY_request);
 	if(tuple) {
     if(strcmp(tuple->value->cstring, "ROUTES") == 0){
+      // Show the route menu/hide the loadind message
+      layer_set_hidden(menu_layer_get_layer(s_route_menu), false);
+      
       // Save the route name on the heap for use in the menu
       char *name = malloc(ROUTE_NAME_LEN); 
       name[0] = '\0';
@@ -135,8 +140,9 @@ static int16_t menu_get_header_height_callback(MenuLayer *menu_layer, uint16_t s
 }
 
 static void menu_draw_header_callback(GContext* gctx, const Layer *cell_layer, uint16_t section_index, void *context) {
-  // Determine which section we're working with
-  menu_cell_basic_header_draw(gctx, cell_layer, s_section_titles[section_index]);
+  if(s_routes_len[section_index] > 0){
+    menu_cell_basic_header_draw(gctx, cell_layer, s_section_titles[section_index]);
+  }
 }
 
 static void menu_draw_row_callback(GContext* gctx, const Layer *cell_layer, MenuIndex *cell_index, void *context) {
@@ -170,9 +176,24 @@ static int16_t get_cell_height_callback(MenuLayer *menu_layer, MenuIndex *cell_i
 static void main_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   s_window_frame = layer_get_frame(window_layer);
+    
+  // Create the loading text
+  s_loading_text = text_layer_create(s_window_frame);
+  text_layer_set_background_color(s_loading_text, GColorClear);
+  text_layer_set_text_color(s_loading_text, GColorBlack);
+  text_layer_set_text_alignment(s_loading_text, GTextAlignmentCenter);
+  text_layer_set_text(s_loading_text, "Loading routes...");
+  layer_add_child(window_layer, text_layer_get_layer(s_loading_text));
   
-  //TODO: Get the routes by API call or cache access
-   
+  // Center the loading text
+  GSize loading_text_size = text_layer_get_content_size(s_loading_text);
+  s_loading_frame = s_window_frame;
+  s_loading_frame.origin.y = (s_window_frame.size.h - loading_text_size.h)/2;
+  
+  // Move the loading text to its new position
+  layer_set_frame(text_layer_get_layer(s_loading_text), s_loading_frame);
+  layer_mark_dirty(text_layer_get_layer(s_loading_text));
+    
   s_route_menu = menu_layer_create(s_window_frame);
   menu_layer_set_callbacks(s_route_menu, NULL, (MenuLayerCallbacks){
     .get_num_sections = menu_get_num_sections_callback,
@@ -186,7 +207,7 @@ static void main_window_load(Window *window) {
   
   // Bind the menu layer's click config provider to the window for interactivity
   menu_layer_set_click_config_onto_window(s_route_menu, window);
-  
+  layer_set_hidden(menu_layer_get_layer(s_route_menu), true);
   layer_add_child(window_layer, menu_layer_get_layer(s_route_menu));
 }
 
