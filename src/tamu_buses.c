@@ -203,9 +203,7 @@ static void menu_draw_row_callback(GContext* gctx, const Layer *cell_layer, Menu
   MenuItem *item = &s_menu_items[i][j];
   #ifdef PBL_COLOR
   if (menu_layer_is_index_selected(s_menu_layer, cell_index)) {
-    graphics_context_set_fill_color(gctx, GColorFromRGB(item->color_rgb[0], item->color_rgb[1], item->color_rgb[2]));
-    GSize size = layer_get_frame(cell_layer).size;
-    graphics_fill_rect(gctx, GRect(0, 0, size.w, size.h), 0, 0);
+    menu_layer_set_highlight_colors(s_menu_layer, GColorFromRGB(item->color_rgb[0], item->color_rgb[1], item->color_rgb[2]), GColorWhite);
   }
   #endif
   menu_cell_basic_draw(gctx, cell_layer, item->title, item->subtitle, NULL);
