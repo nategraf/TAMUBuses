@@ -26,7 +26,7 @@ var routesPath = "Routes";
 var patternPath = "route/{0}/pattern/{1}-{2}-{3}";
 var myStatus = 1;
 
-var retryWaitOriginal = 50;
+var retryWaitOriginal = 100; // in ms
 var retryWait = retryWaitOriginal;
 var pebbleInboxSize = 124; // The defult minimum
 var pebbleUsedInbox = 0;
@@ -124,7 +124,10 @@ function sendNextItem(items, index) {
 // Send a list of items
 function sendList(items) {
   var index = 0;
-  sendNextItem(items, index);
+  if(items.length >= 1){
+    items[0].list_len = items.length;
+    sendNextItem(items, index); 
+  }
 }
 
 // Called when incoming message from the Pebble is received
@@ -191,6 +194,7 @@ Pebble.addEventListener("appmessage", function(e) {
         today.getMonth()+1, 
         today.getDate()
       );
+      req.route_index = e.payload.route_index; // Implant a nonstandard field to use req as the vehicle to transport the route index into the callback.
       console.log("Requesting URL:" + reqUrl);
       req.open("GET", reqUrl, true);
       req.responseType = "json";
@@ -198,27 +202,34 @@ Pebble.addEventListener("appmessage", function(e) {
       req.addEventListener("load", function() {
         var resp = this.response;
         var stops = [];
-        var minLong = Number.MAX_VALUE;
-        var minLat = Number.MAX_VALUE;
+        var minX = Number.MAX_VALUE;
+        var minY = Number.MAX_VALUE;
         for(var i = 0; i < resp.length; i++) {
-          var stop = {"message_type": MessageTypeEnum.ROUTE_PATTERN};
+          var stop = {"message_type": MessageTypeEnum.ROUTE_PATTERN, "route_index": this.route_index}; // Context providing elements
           stop.stop_type = StopTypeEnum.WAYPOINT;
           if(resp[i].PointTypeCode == 1){
             if(resp[i].Stop.IsTimePoint) stop.stop_type = StopTypeEnum.TIMED;
             else stop.stop_type = StopTypeEnum.UNTIMED;
-            stop.stop_name = resp[i].Name; // A point is only named if the bus actually stops there
+            stop.stop_name = resp[i].Name.trim(); // A point is only named if the bus actually stops there
           }
           
-          stop.stop_long = resp[i].Longtitude;
-          stop.stop_lat = resp[i].Latitude;
-          minLong = Math.min(minLong, stop.stop_long);
-          minLat = Math.min(minLat, stop.stop_lat);
+          // We are going to use Latitude and Longitude as if they were X and Y.
+          // On the scale of a bus route this is a good approximation.
+          // College Station around 30.6 degrees longitude and -96.3 degrees latitude
+          // In College Station, TX: 1 degree Longitude = 96.5 km ; 1 degree Latitude = 110.8 km
+          stop.stop_x = resp[i].Longtitude;
+          stop.stop_y = resp[i].Latitude;
+          minX = Math.min(minX, stop.stop_x);
+          minY = Math.min(minY, stop.stop_y);
           stops.push(stop);
         }
-        // Normalize the latitude and longitude so we can work with smaller numbers
+        // Normalize the X and Y so we can work with smaller numbers, then multiply so we can get precision without floats
+        // Each point of x and 
         for(var i = 0; i < stops.length; i++){
-          stops[i].stop_long -= minLong;
-          stops[i].stop_lat -= minLat;
+          stops[i].stop_x -= minX;
+          stops[i].stop_y -= minY;
+          stops[i].stop_x *= 100; 
+          stops[i].stop_y *= 100;
         }
         console.log(JSON.stringify(stops));
         console.log(JSON.stringify(resp));

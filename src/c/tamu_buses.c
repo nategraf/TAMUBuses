@@ -4,6 +4,7 @@
 #define SECTIONS_LEN 4
 #define ROUTE_SHORT_NAME_LEN 8
 #define ROUTE_NAME_LEN 48
+#define STOP_NAME_LEN 48
 #define INBOX_SIZE APP_MESSAGE_INBOX_SIZE_MINIMUM
 #define OUTBOX_SIZE APP_MESSAGE_OUTBOX_SIZE_MINIMUM
 
@@ -32,6 +33,13 @@ typedef struct{
   char *subtitle;
   uint8_t color_rgb[3];
 } MenuItem;
+
+typedef struct {
+  char *name;
+  int32_t x;
+  int32_t y;
+  uint8_t point_type;
+} PatternPoint;
 
 // Menu variables
 static Window *s_menu_window = NULL;
@@ -88,6 +96,21 @@ static void request_route_pattern(const char *short_name){
 	app_message_outbox_begin(&iter);
 	dict_write_uint8(iter, MESSAGE_KEY_message_type, MESSAGE_ROUTE_PATTERN);
   dict_write_cstring(iter, MESSAGE_KEY_route_short_name, short_name);
+  
+  // A quick search for the route index. Easier to search than take it as an input
+  uint16_t route_index = 0;
+  for(int i=0; i<SECTIONS_LEN; i++){
+    bool broke = false;
+    for(int j=0; j<s_section_lens[i]; j++){
+      if(strcmp(short_name, s_menu_items[i][j].title) == 0){
+        route_index = ROUTES_LEN * i + j; // int representation of a 2D index
+        broke = true;
+        break;
+      }
+      if(broke) break;
+    }
+  }
+  dict_write_uint16(iter, MESSAGE_KEY_route_index, route_index);
 	
 	dict_write_end(iter);
   app_message_outbox_send();
@@ -98,6 +121,18 @@ static void out_failed_handler(DictionaryIterator *failed, AppMessageResult reas
 }
 
 //========================================= INBOX HANDLING ======================================================
+static void status_msg_handler(DictionaryIterator *received, void *context) {
+  Tuple *tuple;
+  
+  tuple = dict_find(received, MESSAGE_KEY_js_status);
+  if(tuple) {
+    uint32_t js_status = (int)tuple->value->uint32;
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Received status notification: %d", (int)js_status); 
+    if(js_status == 1) send_inbox_size();
+    else if(js_status == 0) request_routes();
+  }
+}
+
 static void routes_msg_handler(DictionaryIterator *received, void *context){
   Tuple *tuple;
   
@@ -160,21 +195,62 @@ static void routes_msg_handler(DictionaryIterator *received, void *context){
   layer_mark_dirty(menu_layer_get_layer(s_menu_layer));
 }
 
+static void route_pattern_msg_handler(DictionaryIterator *received, void *context) {
+  Tuple *tuple;
+  
+  uint16_t list_len = -1; 
+  tuple = dict_find(received, MESSAGE_KEY_list_len);
+  if(tuple){
+    list_len = tuple->value->uint16;
+  }
+  
+  uint16_t route_index = -1; 
+  tuple = dict_find(received, MESSAGE_KEY_route_index);
+  if(tuple){
+    route_index = tuple->value->uint16;
+  }
+  
+  uint8_t point_type = STOP_WAYPOINT; 
+  tuple = dict_find(received, MESSAGE_KEY_stop_type);
+  if(tuple){
+    point_type = tuple->value->uint8;
+  }
+  
+  char *name = "Way Point";
+  if(point_type == STOP_TIMED || point_type == STOP_UNTIMED){
+    name = malloc(STOP_NAME_LEN); 
+    name[0] = '\0';
+    tuple = dict_find(received, MESSAGE_KEY_stop_name);
+    if(tuple){
+      strcpy(name, tuple->value->cstring);
+    }
+  }
+  
+  int32_t point_x = 0; 
+  tuple = dict_find(received, MESSAGE_KEY_stop_x);
+  if(tuple){
+    point_x = tuple->value->int32;
+  }
+  
+  int32_t point_y = 0; 
+  tuple = dict_find(received, MESSAGE_KEY_stop_y);
+  if(tuple){
+    point_y = tuple->value->int32;
+  }
+  
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "Received pattern point: %s : type %d : (%d, %d) : index %d : list_len %d", name, (int)point_type, (int)point_x, (int)point_y, (int)route_index, (int)list_len);
+}
+  
 // Called when a message is received from PebbleKitJS
 static void in_received_handler(DictionaryIterator *received, void *context) {
 	Tuple *tuple;
+  
 	tuple = dict_find(received, MESSAGE_KEY_message_type);
 	if(tuple) {
     uint8_t msg_type = tuple->value->uint8;
     switch(msg_type){
       case MESSAGE_STATUS : 
-        tuple = dict_find(received, MESSAGE_KEY_js_status);
-        if(tuple) {
-          uint32_t js_status = (int)tuple->value->uint32;
-          APP_LOG(APP_LOG_LEVEL_DEBUG, "Received status notification: %d", (int)js_status); 
-          if(js_status == 1) send_inbox_size();
-          else if(js_status == 0) request_routes();
-        }
+        status_msg_handler(received, context);
       break;
       
       case MESSAGE_ROUTES :
@@ -182,6 +258,7 @@ static void in_received_handler(DictionaryIterator *received, void *context) {
       break;
       
       case MESSAGE_ROUTE_PATTERN :
+        route_pattern_msg_handler(received, context);
       break;
       
       default :

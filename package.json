@@ -4,9 +4,6 @@
     "keywords": [],
     "name": "tamu-buses",
     "pebble": {
-        "capabilities": [
-            ""
-        ],
         "displayName": "TAMU Buses",
         "enableMultiJS": true,
         "messageKeys": [
@@ -21,8 +18,10 @@
             "route_color_b",
             "stop_name",
             "stop_type",
-            "stop_lat",
-            "stop_long"
+            "stop_x",
+            "stop_y",
+            "list_len",
+            "route_index"
         ],
         "projectType": "native",
         "resources": {
