@@ -194,7 +194,7 @@ Pebble.addEventListener("appmessage", function(e) {
         today.getMonth()+1, 
         today.getDate()
       );
-      req.route_index = e.payload.route_index; // Implant a nonstandard field to use req as the vehicle to transport the route index into the callback.
+      req.route_short_name = e.payload.route_short_name; // Implant a nonstandard field to use req as the vehicle to transport the route short name into the callback.
       console.log("Requesting URL:" + reqUrl);
       req.open("GET", reqUrl, true);
       req.responseType = "json";
@@ -205,7 +205,7 @@ Pebble.addEventListener("appmessage", function(e) {
         var minX = Number.MAX_VALUE;
         var minY = Number.MAX_VALUE;
         for(var i = 0; i < resp.length; i++) {
-          var stop = {"message_type": MessageTypeEnum.ROUTE_PATTERN, "route_index": this.route_index}; // Context providing elements
+          var stop = {"message_type": MessageTypeEnum.ROUTE_PATTERN, "route_short_name": this.route_short_name}; // Context providing elements
           stop.stop_type = StopTypeEnum.WAYPOINT;
           if(resp[i].PointTypeCode == 1){
             if(resp[i].Stop.IsTimePoint) stop.stop_type = StopTypeEnum.TIMED;
