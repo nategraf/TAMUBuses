@@ -1,8 +1,8 @@
 #include <pebble.h>
 
 #define ROUTES_LEN 24
+#define PATTERN_LEN 256
 #define SECTIONS_LEN 4
-#define STOP_NAME_LEN 48
 #define INBOX_SIZE APP_MESSAGE_INBOX_SIZE_MINIMUM
 #define OUTBOX_SIZE APP_MESSAGE_OUTBOX_SIZE_MINIMUM
 
@@ -26,15 +26,8 @@ enum {
   MESSAGE_ROUTE_PATTERN = 3,
 };
 
-typedef struct{
-  char *title;
-  char *subtitle;
-  uint8_t color_rgb[3];
-  
-} MenuItem;
-
 // A doubly linked list of bus stops
-typedef struct  StopNode{
+typedef struct StopNode{
   char *name;
   bool is_timed;
   GPoint *point;
@@ -45,10 +38,17 @@ typedef struct  StopNode{
 // An array of points and a linked list of stops
 typedef struct {
   uint16_t points_len;
-  GPoint *points;
+  GPoint points[PATTERN_LEN];
   StopNode *stops_head;
   StopNode *stops_tail;
 } Pattern;
+
+typedef struct{
+  char *title;
+  char *subtitle;
+  uint8_t color_rgb[3];
+  Pattern *pattern;
+} MenuItem;
 
 // Menu variables
 static Window *s_menu_window = NULL;
@@ -191,6 +191,7 @@ static void routes_msg_handler(DictionaryIterator *received, void *context){
   newItem->color_rgb[0] = color_r;
   newItem->color_rgb[1] = color_g;
   newItem->color_rgb[2] = color_b;
+  newItem->pattern = NULL;
   menu_layer_set_selected_index(s_menu_layer, MenuIndex(group, s_section_lens[group]), MenuRowAlignCenter, false);
   s_section_lens[group]++;
 
@@ -381,7 +382,7 @@ static void route_window_load(Window *window) {
   GRect window_frame = layer_get_frame(window_layer);
   
   APP_LOG(APP_LOG_LEVEL_DEBUG, "Loading route window"); 
-  request_route_pattern(s_selected_route->title);
+  if(s_selected_route->pattern == NULL) request_route_pattern(s_selected_route->title);
   
   // Create the route name text
   s_route_name_text = text_layer_create(window_frame);
@@ -443,12 +444,8 @@ static void init(void) {
   app_message_open(inbox_size, outbox_size);
 }
 
-static void deinit(void) {
-	app_message_deregister_callbacks();
-	window_destroy(s_menu_window);
-  window_destroy(s_route_window);
-  
-  // Free up the heap memory used by menu item titles
+// Free up the heap memory used by menu item titles
+static void destroy_menu_items(){
   for(int i=0; i<SECTIONS_LEN; i++){
     for(int j=0; j<s_section_lens[i]; j++){
       if(strlen(s_menu_items[i][j].title) > 0) free(s_menu_items[i][j].title);
@@ -456,6 +453,14 @@ static void deinit(void) {
     }
     s_section_lens[i] = 0;
   }
+}
+
+static void deinit(void) {
+	app_message_deregister_callbacks();
+	window_destroy(s_menu_window);
+  window_destroy(s_route_window);
+  
+  destroy_menu_items();
   
   // Free up heap memory used by stop listings
 }
