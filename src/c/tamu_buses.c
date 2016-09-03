@@ -2,8 +2,6 @@
 
 #define ROUTES_LEN 24
 #define SECTIONS_LEN 4
-#define ROUTE_SHORT_NAME_LEN 8
-#define ROUTE_NAME_LEN 48
 #define STOP_NAME_LEN 48
 #define INBOX_SIZE APP_MESSAGE_INBOX_SIZE_MINIMUM
 #define OUTBOX_SIZE APP_MESSAGE_OUTBOX_SIZE_MINIMUM
@@ -227,12 +225,11 @@ static void route_pattern_msg_handler(DictionaryIterator *received, void *contex
     point_type = tuple->value->uint8;
   }
   
-  char *name = "Way Point";
+  char *name = "\0";
   if(point_type == STOP_TIMED || point_type == STOP_UNTIMED){
-    name = malloc(STOP_NAME_LEN); 
-    name[0] = '\0';
     tuple = dict_find(received, MESSAGE_KEY_stop_name);
     if(tuple){
+      name = malloc(strlen(tuple->value->cstring)+1);
       strcpy(name, tuple->value->cstring);
     }
   }
@@ -459,6 +456,8 @@ static void deinit(void) {
     }
     s_section_lens[i] = 0;
   }
+  
+  // Free up heap memory used by stop listings
 }
 
 int main( void ) {
