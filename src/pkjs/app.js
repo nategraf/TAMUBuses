@@ -8,17 +8,13 @@ var RouteTypeEnum = {
   OTHER: 3
 };
 
-var StopTypeEnum = {
-  WAYPOINT: 0,
-  UNTIMED: 1,
-  TIMED: 2
-};
-
 var MessageTypeEnum = {
   STATUS: 0,
   SET_INBOX_SIZE: 1,
   ROUTES: 2,
-  ROUTE_PATTERN: 3
+  ROUTE_PATTERN: 3,
+  ROUTE_PATTERN_POINTS: 4,
+  ROUTE_PATTERN_STOPS: 5
 };
 
 var apiUrl = "http://transport.tamu.edu/BusRoutesFeed/api/";
@@ -209,38 +205,42 @@ Pebble.addEventListener("appmessage", function(e) {
       req.setRequestHeader("Cache-Control", "no-cache");
       req.addEventListener("load", function() {
         var resp = this.response;
-        var stops = [];
+        var points = [];
+        var stops = []; // Stops is the subset of points which a bus stops at
         var minX = Number.MAX_VALUE;
         var minY = Number.MAX_VALUE;
         for(var i = 0; i < resp.length; i++) {
-          var stop = {"message_type": MessageTypeEnum.ROUTE_PATTERN, "route_short_name": this.route_short_name}; // Context providing elements
-          stop.stop_type = StopTypeEnum.WAYPOINT;
+          var point = {"message_type": MessageTypeEnum.ROUTE_PATTERN_POINTS, "route_short_name": this.route_short_name}; // Context providing elements
           if(resp[i].PointTypeCode == 1){
-            if(resp[i].Stop.IsTimePoint) stop.stop_type = StopTypeEnum.TIMED;
-            else stop.stop_type = StopTypeEnum.UNTIMED;
+            var stop = {"message_type": MessageTypeEnum.ROUTE_PATTERN_STOPS, "route_short_name": this.route_short_name};
+            if(resp[i].Stop.IsTimePoint) stop.stop_is_timed = 1;
+            stop.stop_is_timed = 0;
             stop.stop_name = resp[i].Name.trim(); // A point is only named if the bus actually stops there
+            stop.stop_point_index = i;
+            stops.push(stop);
           }
           
           // We are going to use Latitude and Longitude as if they were X and Y.
           // On the scale of a bus route this is a good approximation.
           // College Station around 30.6 degrees longitude and -96.3 degrees latitude
           // In College Station, TX: 1 degree Longitude = 96.5 km ; 1 degree Latitude = 110.8 km
-          stop.stop_x = resp[i].Longtitude;
-          stop.stop_y = resp[i].Latitude;
-          minX = Math.min(minX, stop.stop_x);
-          minY = Math.min(minY, stop.stop_y);
-          stops.push(stop);
+          point.point_x = resp[i].Longtitude;
+          point.point_y = resp[i].Latitude;
+          minX = Math.min(minX, point.point_x);
+          minY = Math.min(minY, point.point_y);
+          points.push(point);
         }
         // Normalize the X and Y so we can work with smaller numbers, then multiply so we can get precision without floats
         // Each point of x and 
-        for(var i = 0; i < stops.length; i++){
-          stops[i].stop_x -= minX;
-          stops[i].stop_y -= minY;
-          stops[i].stop_x *= 100; 
-          stops[i].stop_y *= 100;
+        for(var i = 0; i < points.length; i++){
+          points[i].point_x -= minX;
+          points[i].point_y -= minY;
+          points[i].point_x *= 100; 
+          points[i].point_y *= 100;
         }
-        console.log(JSON.stringify(stops));
+        console.log(JSON.stringify(points));
         console.log(JSON.stringify(resp));
+        sendList(points);
         sendList(stops);
       });
       req.send();

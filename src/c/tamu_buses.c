@@ -1,7 +1,7 @@
 #include <pebble.h>
 
-#define ROUTES_LEN 24
 #define PATTERN_LEN 256
+#define STOPS_LEN 32
 #define SECTIONS_LEN 4
 #define INBOX_SIZE APP_MESSAGE_INBOX_SIZE_MINIMUM
 #define OUTBOX_SIZE APP_MESSAGE_OUTBOX_SIZE_MINIMUM
@@ -14,16 +14,12 @@ enum {
 };
 
 enum {
-  STOP_WAYPOINT = 0,
-  STOP_UNTIMED = 1,
-  STOP_TIMED = 2
-};
-
-enum {
   MESSAGE_STATUS = 0,
   MESSAGE_SET_INBOX_SIZE = 1,
   MESSAGE_ROUTES = 2,
-  MESSAGE_ROUTE_PATTERN = 3
+  MESSAGE_ROUTE_PATTERN = 3,
+  MESSAGE_ROUTE_PATTERN_POINTS = 4,
+  MESSAGE_ROUTE_PATTERN_STOPS = 5
 };
 
 // A doubly linked list of bus stops
@@ -31,15 +27,14 @@ typedef struct StopNode{
   char *name;
   bool is_timed;
   GPoint *point;
-  struct StopNode *next_stop;
-  struct StopNode *prev_stop;
-} StopNode;
+} Stop;
 
 // An array of points and a linked list of stops
 typedef struct {
   uint16_t points_len;
-  GPoint points[PATTERN_LEN];
-  StopNode *stops_head;
+  uint16_t stops_len;
+  GPoint *points;
+  Stop *stops;
 } Pattern;
 
 typedef struct{
@@ -56,7 +51,7 @@ static TextLayer *s_menu_loading_text = NULL;
 static GRect s_menu_loading_frame;
 static int s_section_lens[SECTIONS_LEN] = {0, 0, 0, 0};
 static char *s_section_titles[SECTIONS_LEN] = {"On Campus", "Off Campus", "Game Day", "Other"};
-static MenuItem *s_menu_items[SECTIONS_LEN];
+static MenuItem *s_menu_items[SECTIONS_LEN] = {NULL, NULL, NULL, NULL};
 static bool s_menu_loading = S_FALSE;
 
 // Route variables
@@ -64,6 +59,38 @@ static Window *s_route_window = NULL;
 static TextLayer *s_route_name_text = NULL;
 static GRect s_route_name_frame;
 static MenuItem *s_selected_route = NULL;
+
+//========================================= CLEAN UP FUNCTIONS ======================================================
+
+static void destroy_pattern_points(Pattern* pattern){
+  if(pattern != NULL) free(pattern->points);
+}
+
+static void destroy_pattern_stops(Pattern* pattern){
+  if(pattern != NULL){
+    for(int i=0; i<pattern->stops_len; i++){
+      if(strlen(pattern->stops[i].name) > 0) free(pattern->stops[i].name);
+    }
+    free(pattern->stops);
+  } 
+}
+  
+// Free up the heap memory used by menu item titles and patterns
+static void destroy_menu_items(){
+  for(int i=0; i<SECTIONS_LEN; i++){
+    for(int j=0; j<s_section_lens[i]; j++){
+      MenuItem *item = &s_menu_items[i][j];
+      if(strlen(item->title) > 0) free(item->title);
+      if(strlen(item->subtitle) > 0) free(item->subtitle);
+      destroy_pattern_points(item->pattern);
+      destroy_pattern_stops(item->pattern);
+      free(item->pattern);
+    }
+    s_section_lens[i] = 0;
+    free(s_menu_items[i]);
+    s_menu_items[i] = NULL;
+  }
+}
 
 //========================================= CLICK HANDLING ======================================================
 void down_single_click_handler(ClickRecognizerRef recognizer, void *context) {
@@ -179,20 +206,24 @@ static void routes_msg_handler(DictionaryIterator *received, void *context){
   if(tuple){
     list_len = tuple->value->uint32;
   }
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "Received route: %s - %s : group %d : rgb(%d, %d, %d)", short_name, name, group, color_r, color_g, color_b);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "Received route: %s - %s : group %d : rgb(%d, %d, %d) : %d of %d", short_name, name, group, color_r, color_g, color_b, (int)index, (int)list_len);
 
   if(list_len > 0){
     // This must be new list
     s_menu_items[group] = (MenuItem*)malloc(sizeof(MenuItem) * list_len);
   }
   
-  MenuItem *newItem = &s_menu_items[group][index];
-  newItem->title = short_name;
-  newItem->subtitle = name;
-  newItem->color_rgb[0] = color_r;
-  newItem->color_rgb[1] = color_g;
-  newItem->color_rgb[2] = color_b;
-  newItem->pattern = NULL;
+  MenuItem *new_item = &s_menu_items[group][index];
+  new_item->title = short_name;
+  new_item->subtitle = name;
+  new_item->color_rgb[0] = color_r;
+  new_item->color_rgb[1] = color_g;
+  new_item->color_rgb[2] = color_b;
+  new_item->pattern = (Pattern*)malloc(sizeof(Pattern));
+  new_item->pattern->points_len = 0;
+  new_item->pattern->points = NULL;
+  new_item->pattern->stops_len = 0;
+  new_item->pattern->stops = NULL;
   menu_layer_set_selected_index(s_menu_layer, MenuIndex(group, s_section_lens[group]), MenuRowAlignCenter, false);
   s_section_lens[group]++;
 
@@ -206,8 +237,26 @@ static void routes_msg_handler(DictionaryIterator *received, void *context){
   layer_mark_dirty(menu_layer_get_layer(s_menu_layer));
 }
 
-static void route_pattern_msg_handler(DictionaryIterator *received, void *context) {
+static void route_pattern_points_msg_handler(DictionaryIterator *received, void *context) {
   Tuple *tuple;
+  
+  int32_t point_x = 0; 
+  tuple = dict_find(received, MESSAGE_KEY_point_x);
+  if(tuple){
+    point_x = tuple->value->int32;
+  }
+  
+  int32_t point_y = 0; 
+  tuple = dict_find(received, MESSAGE_KEY_point_y);
+  if(tuple){
+    point_y = tuple->value->int32;
+  }
+  
+  uint32_t index = 0; 
+  tuple = dict_find(received, MESSAGE_KEY_list_index);
+  if(tuple){
+    index = tuple->value->uint32;
+  }
   
   uint32_t list_len = 0; 
   tuple = dict_find(received, MESSAGE_KEY_list_len);
@@ -215,48 +264,22 @@ static void route_pattern_msg_handler(DictionaryIterator *received, void *contex
     list_len = tuple->value->uint32;
   }
   
-  uint8_t point_type = STOP_WAYPOINT; 
-  tuple = dict_find(received, MESSAGE_KEY_stop_type);
-  if(tuple){
-    point_type = tuple->value->uint8;
-  }
-  
-  char *name = "\0";
-  if(point_type == STOP_TIMED || point_type == STOP_UNTIMED){
-    tuple = dict_find(received, MESSAGE_KEY_stop_name);
-    if(tuple){
-      name = (char*)malloc(strlen(tuple->value->cstring)+1);
-      strcpy(name, tuple->value->cstring);
-    }
-  }
-  
-  int32_t point_x = 0; 
-  tuple = dict_find(received, MESSAGE_KEY_stop_x);
-  if(tuple){
-    point_x = tuple->value->int32;
-  }
-  
-  int32_t point_y = 0; 
-  tuple = dict_find(received, MESSAGE_KEY_stop_y);
-  if(tuple){
-    point_y = tuple->value->int32;
-  }
-  
   // Dont store short name on heap here
-  char *short_name = "ERROR"; 
+  char *route_name = "ERROR"; 
   tuple = dict_find(received, MESSAGE_KEY_route_short_name);
   if(tuple){
-    short_name = tuple->value->cstring;
+    route_name = tuple->value->cstring;
   }
   
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "Received pattern point: %s : type %d : (%d, %d) : route %s : list_len %d", name, (int)point_type, (int)point_x, (int)point_y, short_name, (int)list_len);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "Received pattern point: (%d, %d) : route %s : %d of %d", (int)point_x, (int)point_y, route_name, (int)index, (int)list_len);
   
-  // A quick search for the route index. Easier than passing it over the wire
+  // A quick search for the route index. Easier than passing it over the wire 
+  // TODO: On second thought this sucks. :P
   MenuItem *route = NULL;
   for(int i=0; i<SECTIONS_LEN; i++){
     bool broke = false;
     for(int j=0; j<s_section_lens[i]; j++){
-      if(strcmp(short_name, s_menu_items[i][j].title) == 0){
+      if(strcmp(route_name, s_menu_items[i][j].title) == 0){
         route = &s_menu_items[i][j];
         broke = true;
         break;
@@ -265,24 +288,83 @@ static void route_pattern_msg_handler(DictionaryIterator *received, void *contex
     }
   }
   if(route != NULL){
-    if(route->pattern == NULL){
-      route->pattern = (Pattern*)malloc(sizeof(Pattern));
+    if(list_len > 0){
+      // This is a new list transmission
+      destroy_pattern_points(route->pattern);
+      route->pattern->points = (GPoint*)malloc(sizeof(GPoint) * list_len);
       route->pattern->points_len = 0;
-      route->pattern->stops_head = NULL;
     }
-    route->pattern->points[route->pattern->points_len] = GPoint(point_x, point_y);
-    if(point_type == STOP_TIMED || point_type == STOP_UNTIMED){
-      StopNode *stop = (StopNode*)malloc(sizeof(StopNode));
-      stop->name = name;
-      stop->is_timed = point_type == STOP_TIMED;
-      stop->point = &(route->pattern->points[route->pattern->points_len]);
-      //insert_stop(route->pattern, stop);
-      //print_stops_list(route->pattern->stops_head);
-    }
+    route->pattern->points[index] = GPoint(point_x, point_y);
     route->pattern->points_len++;
   }
   else{
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Pattern references non-existance route: %s", short_name);
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Pattern references non-existance route: %s", route_name);
+  }
+}
+
+static void route_pattern_stops_msg_handler(DictionaryIterator *received, void *context) {
+  Tuple *tuple;
+  
+  // Save the route name on the heap for use in the menu
+  char *stop_name = "\0"; 
+  tuple = dict_find(received, MESSAGE_KEY_stop_name);
+  if(tuple){
+    stop_name = (char*)malloc(strlen(tuple->value->cstring)+1);
+    strcpy(stop_name, tuple->value->cstring);
+  }
+  
+  bool is_timed = false; 
+  tuple = dict_find(received, MESSAGE_KEY_stop_is_timed);
+  if(tuple){
+    is_timed = tuple->value->uint8;
+  }
+  
+  uint32_t stop_point_index = 0;
+  tuple = dict_find(received, MESSAGE_KEY_stop_point_index);
+  if(tuple){
+    stop_point_index = tuple->value->uint32;
+  }
+  
+  uint32_t index = 0; 
+  tuple = dict_find(received, MESSAGE_KEY_list_index);
+  if(tuple){
+    index = tuple->value->uint32;
+  }
+  
+  uint32_t list_len = 0; 
+  tuple = dict_find(received, MESSAGE_KEY_list_len);
+  if(tuple){
+    list_len = tuple->value->uint32;
+  }
+  
+  // Dont store short name on heap here
+  char *route_name = "ERROR"; 
+  tuple = dict_find(received, MESSAGE_KEY_route_short_name);
+  if(tuple){
+    route_name = tuple->value->cstring;
+  }
+  
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "Received pattern stop: %s : timed %d : ->%d : route %s : %d of %d", stop_name, (int)is_timed, (int)stop_point_index, route_name, (int)index, (int)list_len);
+  
+  // A quick search for the route index. Easier than passing it over the wire 
+  // TODO: On second thought this sucks. :P
+  MenuItem *route = NULL;
+  for(int i=0; i<SECTIONS_LEN; i++){
+    bool broke = false;
+    for(int j=0; j<s_section_lens[i]; j++){
+      if(strcmp(route_name, s_menu_items[i][j].title) == 0){
+        route = &s_menu_items[i][j];
+        broke = true;
+        break;
+      }
+      if(broke) break;
+    }
+  }
+  if(route != NULL){
+    
+  }
+  else{
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Pattern references non-existance route: %s", route_name);
   }
 }
   
@@ -302,8 +384,12 @@ static void in_received_handler(DictionaryIterator *received, void *context) {
         routes_msg_handler(received, context);
       break;
       
-      case MESSAGE_ROUTE_PATTERN :
-        route_pattern_msg_handler(received, context);
+      case MESSAGE_ROUTE_PATTERN_POINTS :
+        route_pattern_points_msg_handler(received, context);
+      break;
+      
+      case MESSAGE_ROUTE_PATTERN_STOPS :
+        route_pattern_stops_msg_handler(received, context);
       break;
       
       default :
@@ -418,7 +504,7 @@ static void route_window_load(Window *window) {
   GRect window_frame = layer_get_frame(window_layer);
   
   APP_LOG(APP_LOG_LEVEL_DEBUG, "Loading route window"); 
-  if(s_selected_route->pattern == NULL) request_route_pattern(s_selected_route->title);
+  if(s_selected_route->pattern->points == NULL && s_selected_route->pattern->stops == NULL) request_route_pattern(s_selected_route->title);
   
   // Create the route name text
   s_route_name_text = text_layer_create(window_frame);
@@ -478,22 +564,6 @@ static void init(void) {
   int inbox_size = INBOX_SIZE;
   int outbox_size = OUTBOX_SIZE;
   app_message_open(inbox_size, outbox_size);
-}
-
-// Free up the heap memory used by menu item titles and patterns
-static void destroy_menu_items(){
-  for(int i=0; i<SECTIONS_LEN; i++){
-    for(int j=0; j<s_section_lens[i]; j++){
-      MenuItem *item = &s_menu_items[i][j];
-      if(strlen(item->title) > 0) free(item->title);
-      if(strlen(item->subtitle) > 0) free(item->subtitle);
-      //destroy_stop_list(item->pattern->stops_head);
-      free(item->pattern);
-    }
-    s_section_lens[i] = 0;
-    free(s_menu_items[i]);
-    s_menu_items[i] = NULL;
-  }
 }
 
 static void deinit(void) {

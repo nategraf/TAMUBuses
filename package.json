@@ -17,11 +17,12 @@
             "route_color_g",
             "route_color_b",
             "stop_name",
-            "stop_type",
-            "stop_x",
-            "stop_y",
+            "stop_is_timed",
+            "point_x",
+            "point_y",
             "list_len",
-            "list_index"
+            "list_index",
+            "stop_point_index"
         ],
         "projectType": "native",
         "resources": {
