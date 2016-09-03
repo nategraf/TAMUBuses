@@ -20,7 +20,8 @@
             "stop_type",
             "stop_x",
             "stop_y",
-            "list_len"
+            "list_len",
+            "list_index"
         ],
         "projectType": "native",
         "resources": {

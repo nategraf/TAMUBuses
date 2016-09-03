@@ -103,6 +103,7 @@ Pebble.addEventListener("ready", function(e) {
 // Used when sending a list of items
 function sendNextItem(items, index) {
   // Send the message
+  items[index].list_index = index;
   Pebble.sendAppMessage(items[index], function() {
     // Use success callback to increment index
     index++;
@@ -155,6 +156,10 @@ Pebble.addEventListener("appmessage", function(e) {
         // Will be called when data is returned from the server
         var resp = this.response;
         var routes = [];
+        routes[RouteTypeEnum.ON_CAMPUS] = [];
+        routes[RouteTypeEnum.OFF_CAMPUS] = [];
+        routes[RouteTypeEnum.GAME_DAY] = [];
+        routes[RouteTypeEnum.OTHER] = [];
         for (var i = 0; i < resp.length; i++) {
           var route = {"message_type": MessageTypeEnum.ROUTES};
           route.route_name = resp[i].Name.trim();
@@ -175,11 +180,14 @@ Pebble.addEventListener("appmessage", function(e) {
             route.route_color_g = route_color[1];
             route.route_color_b = route_color[2];
           }
-          routes.push(route);
+          routes[route.route_type].push(route);
         }
         console.log(JSON.stringify(routes));
         console.log(JSON.stringify(resp));
-        sendList(routes);
+        sendList(routes[RouteTypeEnum.ON_CAMPUS]);
+        sendList(routes[RouteTypeEnum.OFF_CAMPUS]);
+        sendList(routes[RouteTypeEnum.GAME_DAY]);
+        sendList(routes[RouteTypeEnum.OTHER]);
       });
       req.send();
     break;

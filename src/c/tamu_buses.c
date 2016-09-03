@@ -56,7 +56,7 @@ static TextLayer *s_menu_loading_text = NULL;
 static GRect s_menu_loading_frame;
 static int s_section_lens[SECTIONS_LEN] = {0, 0, 0, 0};
 static char *s_section_titles[SECTIONS_LEN] = {"On Campus", "Off Campus", "Game Day", "Other"};
-static MenuItem s_menu_items[SECTIONS_LEN][ROUTES_LEN];
+static MenuItem *s_menu_items[SECTIONS_LEN];
 static bool s_menu_loading = S_FALSE;
 
 // Route variables
@@ -64,49 +64,6 @@ static Window *s_route_window = NULL;
 static TextLayer *s_route_name_text = NULL;
 static GRect s_route_name_frame;
 static MenuItem *s_selected_route = NULL;
-
-//========================================= UTILITY ======================================================
-void print_stops_list(StopNode *head){
-  StopNode *curr = head;
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "Linked stop list follows");
-  do {
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "  Stop: %s", curr->name);
-    curr = curr->next_stop;
-  } while(curr != head && curr != NULL);
-}
-
-// Insert stop into the circular doubly linked list
-void insert_stop(Pattern* pattern, StopNode* stop){
-  // Empty list
-  if(pattern->stops_head == NULL){
-    pattern->stops_head = stop;
-  }
-  else{
-    StopNode *prev = pattern->stops_head->prev_stop;
-    // Single item list
-    if(prev == NULL){
-      pattern->stops_head->next_stop = stop;
-    }
-    // List lenght > 1
-    else{
-      prev->next_stop = stop;
-    }
-    pattern->stops_head->prev_stop = stop;
-  }
-}
-
-// Destroy the list
-void destroy_stop_list(StopNode* head){
-  if(head != NULL){
-    StopNode *curr = head;
-    do {
-      if(strlen(curr->name) > 0) free(curr->name);
-      StopNode *prev = curr;
-      curr = curr->next_stop;
-      free(prev);
-    } while(curr != head && curr != NULL);
-  }  
-}
 
 //========================================= CLICK HANDLING ======================================================
 void down_single_click_handler(ClickRecognizerRef recognizer, void *context) {
@@ -210,9 +167,26 @@ static void routes_msg_handler(DictionaryIterator *received, void *context){
   if(tuple){
     group = tuple->value->uint8;
   }
+  
+  uint32_t index = 0;
+  tuple = dict_find(received, MESSAGE_KEY_list_index);
+  if(tuple){
+    index = tuple->value->uint32;
+  }
+  
+  uint32_t list_len = 0;
+  tuple = dict_find(received, MESSAGE_KEY_list_len);
+  if(tuple){
+    list_len = tuple->value->uint32;
+  }
   APP_LOG(APP_LOG_LEVEL_DEBUG, "Received route: %s - %s : group %d : rgb(%d, %d, %d)", short_name, name, group, color_r, color_g, color_b);
 
-  MenuItem *newItem = &s_menu_items[group][s_section_lens[group]];
+  if(list_len > 0){
+    // This must be new list
+    s_menu_items[group] = (MenuItem*)malloc(sizeof(MenuItem) * list_len);
+  }
+  
+  MenuItem *newItem = &s_menu_items[group][index];
   newItem->title = short_name;
   newItem->subtitle = name;
   newItem->color_rgb[0] = color_r;
@@ -235,10 +209,10 @@ static void routes_msg_handler(DictionaryIterator *received, void *context){
 static void route_pattern_msg_handler(DictionaryIterator *received, void *context) {
   Tuple *tuple;
   
-  uint16_t list_len = 0; 
+  uint32_t list_len = 0; 
   tuple = dict_find(received, MESSAGE_KEY_list_len);
   if(tuple){
-    list_len = tuple->value->uint16;
+    list_len = tuple->value->uint32;
   }
   
   uint8_t point_type = STOP_WAYPOINT; 
@@ -302,8 +276,8 @@ static void route_pattern_msg_handler(DictionaryIterator *received, void *contex
       stop->name = name;
       stop->is_timed = point_type == STOP_TIMED;
       stop->point = &(route->pattern->points[route->pattern->points_len]);
-      insert_stop(route->pattern, stop);
-      print_stops_list(route->pattern->stops_head);
+      //insert_stop(route->pattern, stop);
+      //print_stops_list(route->pattern->stops_head);
     }
     route->pattern->points_len++;
   }
@@ -506,17 +480,19 @@ static void init(void) {
   app_message_open(inbox_size, outbox_size);
 }
 
-// Free up the heap memory used by menu item titles and petterns
+// Free up the heap memory used by menu item titles and patterns
 static void destroy_menu_items(){
   for(int i=0; i<SECTIONS_LEN; i++){
     for(int j=0; j<s_section_lens[i]; j++){
       MenuItem *item = &s_menu_items[i][j];
       if(strlen(item->title) > 0) free(item->title);
       if(strlen(item->subtitle) > 0) free(item->subtitle);
-      destroy_stop_list(item->pattern->stops_head);
+      //destroy_stop_list(item->pattern->stops_head);
       free(item->pattern);
     }
     s_section_lens[i] = 0;
+    free(s_menu_items[i]);
+    s_menu_items[i] = NULL;
   }
 }
 
