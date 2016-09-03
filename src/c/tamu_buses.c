@@ -32,14 +32,25 @@ typedef struct{
   char *title;
   char *subtitle;
   uint8_t color_rgb[3];
+  
 } MenuItem;
 
-typedef struct {
+// A doubly linked list of bus stops
+typedef struct  StopNode{
   char *name;
-  int32_t x;
-  int32_t y;
-  uint8_t point_type;
-} PatternPoint;
+  bool is_timed;
+  GPoint *point;
+  struct StopNode *next_stop;
+  struct StopNode *prev_stop;
+} StopNode;
+
+// An array of points and a linked list of stops
+typedef struct {
+  uint16_t points_len;
+  GPoint *points;
+  StopNode *stops_head;
+  StopNode *stops_tail;
+} Pattern;
 
 // Menu variables
 static Window *s_menu_window = NULL;
@@ -137,17 +148,17 @@ static void routes_msg_handler(DictionaryIterator *received, void *context){
   Tuple *tuple;
   
   // Save the route name on the heap for use in the menu
-  char *name = malloc(ROUTE_NAME_LEN); 
-  name[0] = '\0';
+  char *name = "\0"; 
   tuple = dict_find(received, MESSAGE_KEY_route_name);
   if(tuple){
+    name = malloc(strlen(tuple->value->cstring)+1);
     strcpy(name, tuple->value->cstring);
   }
 
-  char *short_name = malloc(ROUTE_SHORT_NAME_LEN); 
-  short_name[0] = '\0';
+  char *short_name = "\0"; 
   tuple = dict_find(received, MESSAGE_KEY_route_short_name);
   if(tuple){
+    short_name = malloc(strlen(tuple->value->cstring)+1);
     strcpy(short_name, tuple->value->cstring);
   }
 
@@ -443,8 +454,8 @@ static void deinit(void) {
   // Free up the heap memory used by menu item titles
   for(int i=0; i<SECTIONS_LEN; i++){
     for(int j=0; j<s_section_lens[i]; j++){
-      free(s_menu_items[i][j].title);
-      free(s_menu_items[i][j].subtitle);
+      if(strlen(s_menu_items[i][j].title) > 0) free(s_menu_items[i][j].title);
+      if(strlen(s_menu_items[i][j].subtitle) > 0) free(s_menu_items[i][j].subtitle);
     }
     s_section_lens[i] = 0;
   }
