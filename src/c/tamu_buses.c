@@ -206,7 +206,7 @@ static void routes_msg_handler(DictionaryIterator *received, void *context){
   if(tuple){
     list_len = tuple->value->uint32;
   }
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "Received route: %s - %s : group %d : rgb(%d, %d, %d) : %d of %d", short_name, name, group, color_r, color_g, color_b, (int)index, (int)list_len);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "Received route: %s - %s : group %d : rgb(%d, %d, %d) : %d of %d", short_name, name, group, color_r, color_g, color_b, (int)index+1, (int)list_len);
 
   if(list_len > 0){
     // This must be new list
@@ -271,7 +271,7 @@ static void route_pattern_points_msg_handler(DictionaryIterator *received, void 
     route_name = tuple->value->cstring;
   }
   
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "Received pattern point: (%d, %d) : route %s : %d of %d", (int)point_x, (int)point_y, route_name, (int)index, (int)list_len);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "Received pattern point: (%d, %d) : route %s : %d of %d", (int)point_x, (int)point_y, route_name, (int)index+1, (int)list_len);
   
   // A quick search for the route index. Easier than passing it over the wire 
   // TODO: On second thought this sucks. :P
@@ -344,7 +344,7 @@ static void route_pattern_stops_msg_handler(DictionaryIterator *received, void *
     route_name = tuple->value->cstring;
   }
   
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "Received pattern stop: %s : timed %d : ->%d : route %s : %d of %d", stop_name, (int)is_timed, (int)stop_point_index, route_name, (int)index, (int)list_len);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "Received pattern stop: %s : timed %d : ->%d : route %s : %d of %d", stop_name, (int)is_timed, (int)stop_point_index, route_name, (int)index+1, (int)list_len);
   
   // A quick search for the route index. Easier than passing it over the wire 
   // TODO: On second thought this sucks. :P
