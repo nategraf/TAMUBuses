@@ -23,7 +23,8 @@ enum {
 };
 
 typedef struct {
-  GPoint *points;
+  GPoint **points;
+  uint16_t points_len;
 } ConvexHull;
 
 // A doubly linked list of bus stops
@@ -39,6 +40,7 @@ typedef struct {
   uint16_t stops_len;
   GPoint *points;
   Stop *stops;
+  ConvexHull *convex_hull;
 } Pattern;
 
 typedef struct{
@@ -61,10 +63,53 @@ static bool s_menu_loading = S_FALSE;
 // Route variables
 static Window *s_route_window = NULL;
 static TextLayer *s_route_name_text = NULL;
+static Layer *s_route_pattern = NULL;
+static GPath *s_pattern_path = NULL;
 static GRect s_route_name_frame;
 static MenuItem *s_selected_route = NULL;
+static bool s_pattern_loading = S_FALSE;
+static GPathInfo* s_pattern_gpath_info = NULL;
+static GPath* s_pattern_gpath = NULL;
+static bool s_pattern_updated = S_FALSE;
 
 //========================================= COMPUTATIONAL GEOMETRY :D ======================================================
+
+// Taken from StackOverflow user @Craig McQueen 
+// http://stackoverflow.com/questions/1100090/looking-for-an-efficient-integer-square-root-algorithm-for-arm-thumb2
+uint32_t pebble_sqrt(uint32_t a_nInput)
+{
+    uint32_t op  = a_nInput;
+    uint32_t res = 0;
+    uint32_t one = 1uL << 30; // The second-to-top bit is set: use 1u << 14 for uint16_t type; use 1uL<<30 for uint32_t type
+  
+    // "one" starts at the highest power of four <= than the argument.
+    while (one > op)
+    {
+        one >>= 2;
+    }
+
+    while (one != 0)
+    {
+        if (op >= res + one)
+        {
+            op = op - (res + one);
+            res = res +  2 * one;
+        }
+        res >>= 1;
+        one >>= 2;
+    }
+    return res;
+}
+
+static GPoint center(GPoint* p, GPoint* q){
+  uint16_t avg_x = (p->x + q->x)/2;
+  uint16_t avg_y = (p->y + q->y)/2;
+  return GPoint(avg_x, avg_y);
+}
+
+static uint16_t distance(GPoint* p, GPoint* q){
+  return pebble_sqrt((p->x - q->x) * (p->x - q->x) + (p->y - q->y) *(p->y - q->y));
+}
 
 // Finds the left tangent of the line through a point against a counter-clockwise sorted convex hull
 static GPoint* left_tangent(GPoint* p, ConvexHull* chull){
@@ -78,20 +123,58 @@ static GPoint* right_tangent(GPoint* p, ConvexHull* chull){
 
 // If the point is external, make it part of the convex hull. If it is internal, do nothing
 static void integrate_point(GPoint* p, ConvexHull* chull){
-  return;
+  // Be stupid and assume all points are in the convex hull
+  if(p != NULL){
+    chull->points[chull->points_len] = p;
+    chull->points_len++;
+  }
 }
 
 // Returns an array of two points, being the points which are farthest from each other
-static GPoint* extreme_points(ConvexHull* chull){
-  return NULL;
+// Currently O(n^2); Can be reduced to O(n) with rotating calipers algorithm
+// Extremes needs to be a GPoint* pair to be filled
+static void extreme_points(ConvexHull* chull, GPoint** extremes){
+  extremes[0] = NULL;
+  extremes[1] = NULL;
+  
+  if(chull->points_len >= 1){
+    extremes[0] = chull->points[0];
+  }
+  if(chull->points_len >= 2){
+    extremes[1] = chull->points[1];
+  }
+  if(chull->points_len > 2){
+    uint16_t max_dist = 0;
+    for(int i=0; i<chull->points_len; ++i){
+      for(int j=i+1; j<chull->points_len; ++j){
+        uint16_t dist = distance(chull->points[i], chull->points[j]);
+        if(dist > max_dist){
+          extremes[0] = chull->points[i];
+          extremes[1] = chull->points[j];
+          max_dist = dist;
+        }
+      }
+    }
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Found extreme points to be (%d, %d) and (%d, %d) with a dist of %d", extremes[0]->x, extremes[0]->y, extremes[1]->x, extremes[1]->y, max_dist);
+  }
 }
 
 //========================================= CLEAN UP FUNCTIONS ======================================================
 
+static void destroy_convex_hull(ConvexHull* chull){
+  if(chull != NULL){
+    if(chull->points != NULL){
+      free(chull->points);
+      chull->points = NULL;
+    }
+    chull->points_len = 0;
+  } 
+}
+
 static void destroy_pattern_points(Pattern* pattern){
   if(pattern != NULL){
     free(pattern->points);
-    pattern->point = NULL;
+    pattern->points = NULL;
   } 
   pattern->points_len = 0;
 }
@@ -117,6 +200,7 @@ static void destroy_menu_items(){
       if(strlen(item->subtitle) > 0) free(item->subtitle);
       destroy_pattern_points(item->pattern);
       destroy_pattern_stops(item->pattern);
+      destroy_convex_hull(item->pattern->convex_hull);
       free(item->pattern);
     }
     s_section_lens[i] = 0;
@@ -257,6 +341,7 @@ static void routes_msg_handler(DictionaryIterator *received, void *context){
   new_item->pattern->points = NULL;
   new_item->pattern->stops_len = 0;
   new_item->pattern->stops = NULL;
+  new_item->pattern->convex_hull = NULL;
   s_section_lens[group]++;
 
   // Show the route menu/hide the loading message
@@ -324,17 +409,33 @@ static void route_pattern_points_msg_handler(DictionaryIterator *received, void 
     }
   }
   if(route != NULL){
-    if(list_len > 0){
+    if(route->pattern->points == NULL){
       // This is a new list transmission
-      destroy_pattern_points(route->pattern);
+      //destroy_pattern_points(route->pattern);
       route->pattern->points = (GPoint*)malloc(sizeof(GPoint) * list_len);
       route->pattern->points_len = 0;
     }
+    
+    if(route->pattern->convex_hull == NULL){
+      route->pattern->convex_hull = (ConvexHull*)malloc(sizeof(ConvexHull));
+      route->pattern->convex_hull->points = (GPoint**)malloc(sizeof(GPoint*) * list_len); //Worst case convex hull contains all points
+      route->pattern->convex_hull->points_len = 0;
+    }
     route->pattern->points[index] = GPoint(point_x, point_y);
     route->pattern->points_len++;
+    
+    integrate_point(&route->pattern->points[index], route->pattern->convex_hull);
+    GPoint* extremes[2];
+    extreme_points(route->pattern->convex_hull, extremes);
   }
   else{
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Pattern references non-existance route: %s", route_name);
+  }
+  
+  if(s_pattern_loading){
+    s_pattern_loading = S_FALSE;
+    layer_set_hidden(s_route_pattern, false);
+    layer_set_hidden(text_layer_get_layer(s_route_name_text), true);
   }
 }
 
@@ -397,7 +498,22 @@ static void route_pattern_stops_msg_handler(DictionaryIterator *received, void *
     }
   }
   if(route != NULL){
-    
+    if(route->pattern->points == NULL){
+      // This is a new list transmission
+      //destroy_pattern_points(route->pattern);
+      route->pattern->points = (GPoint*)malloc(sizeof(GPoint) * list_len);
+      route->pattern->points_len = 0;
+    }
+    if(route->pattern->stops == NULL){
+      // This is a new list transmission
+      //destroy_pattern_stops(route->pattern);
+      route->pattern->stops = (Stop*)malloc(sizeof(Stop) * list_len);
+      route->pattern->stops_len = 0;
+    }
+    route->pattern->stops[index].is_timed = is_timed;
+    route->pattern->stops[index].name = stop_name;
+    route->pattern->stops[index].point = route->pattern->points + stop_point_index;
+    route->pattern->stops_len++;
   }
   else{
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Pattern references non-existance route: %s", route_name);
@@ -535,6 +651,20 @@ static void menu_window_unload(Window *window) {
 }
 
 //========================================= ROUTE WINDOW ======================================================
+static void pattern_layer_update_proc(Layer *my_layer, GContext* ctx){
+  if(s_pattern_updated){
+    
+  }
+  if(s_pattern_gpath != NULL){
+    // Fill the path:
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    gpath_draw_filled(ctx, s_pattern_gpath);
+    // Stroke the path:
+    graphics_context_set_stroke_color(ctx, GColorBlack);
+    gpath_draw_outline(ctx, s_pattern_gpath);
+  }
+}
+
 static void route_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect window_frame = layer_get_frame(window_layer);
@@ -563,6 +693,12 @@ static void route_window_load(Window *window) {
   // Move the loading text to its new position
   layer_set_frame(text_layer_get_layer(s_route_name_text), s_route_name_frame);
   layer_mark_dirty(text_layer_get_layer(s_route_name_text));
+  
+  // Create the pattern display layer
+  s_route_pattern = layer_create(window_frame);
+  layer_set_hidden(s_route_pattern, true);
+  s_pattern_loading = S_TRUE;
+  layer_add_child(window_layer, s_route_pattern);
 }
 
 static void route_window_unload(Window *window) {
