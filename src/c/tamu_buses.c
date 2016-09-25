@@ -89,15 +89,22 @@ static GPoint* extreme_points(ConvexHull* chull){
 //========================================= CLEAN UP FUNCTIONS ======================================================
 
 static void destroy_pattern_points(Pattern* pattern){
-  if(pattern != NULL) free(pattern->points);
+  if(pattern != NULL){
+    free(pattern->points);
+    pattern->point = NULL;
+  } 
+  pattern->points_len = 0;
 }
 
 static void destroy_pattern_stops(Pattern* pattern){
   if(pattern != NULL){
-    for(int i=0; i<pattern->stops_len; i++){
-      if(strlen(pattern->stops[i].name) > 0) free(pattern->stops[i].name);
+    if(pattern->stops != NULL){
+      for(int i=0; i<pattern->stops_len; i++){
+        if(strlen(pattern->stops[i].name) > 0) free(pattern->stops[i].name);
+      }
+      free(pattern->stops);
     }
-    free(pattern->stops);
+    pattern->stops_len = 0;
   } 
 }
   
