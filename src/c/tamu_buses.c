@@ -22,8 +22,12 @@ enum {
   MESSAGE_ROUTE_PATTERN_STOPS = 5
 };
 
+typedef struct {
+  GPoint *points;
+} ConvexHull;
+
 // A doubly linked list of bus stops
-typedef struct StopNode{
+typedef struct{
   char *name;
   bool is_timed;
   GPoint *point;
@@ -59,6 +63,28 @@ static Window *s_route_window = NULL;
 static TextLayer *s_route_name_text = NULL;
 static GRect s_route_name_frame;
 static MenuItem *s_selected_route = NULL;
+
+//========================================= COMPUTATIONAL GEOMETRY :D ======================================================
+
+// Finds the left tangent of the line through a point against a counter-clockwise sorted convex hull
+static GPoint* left_tangent(GPoint* p, ConvexHull* chull){
+  return NULL;
+}
+
+// Finds the right tangent of the line through a point against a counter-clockwise sorted convex hull
+static GPoint* right_tangent(GPoint* p, ConvexHull* chull){
+  return NULL;
+}
+
+// If the point is external, make it part of the convex hull. If it is internal, do nothing
+static void integrate_point(GPoint* p, ConvexHull* chull){
+  return;
+}
+
+// Returns an array of two points, being the points which are farthest from each other
+static GPoint* extreme_points(ConvexHull* chull){
+  return NULL;
+}
 
 //========================================= CLEAN UP FUNCTIONS ======================================================
 
