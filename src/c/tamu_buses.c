@@ -107,7 +107,7 @@ static GPoint center(GPoint* p, GPoint* q){
   return GPoint(avg_x, avg_y);
 }
 
-static uint16_t distance(GPoint* p, GPoint* q){
+static uint32_t distance(GPoint* p, GPoint* q){
   return pebble_sqrt((p->x - q->x) * (p->x - q->x) + (p->y - q->y) *(p->y - q->y));
 }
 
@@ -134,20 +134,24 @@ static void integrate_point(GPoint* p, ConvexHull* chull){
 // Currently O(n^2); Can be reduced to O(n) with rotating calipers algorithm
 // Extremes needs to be a GPoint* pair to be filled
 static void extreme_points(ConvexHull* chull, GPoint** extremes){
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "1");
   extremes[0] = NULL;
   extremes[1] = NULL;
   
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "2");
   if(chull->points_len >= 1){
     extremes[0] = chull->points[0];
   }
   if(chull->points_len >= 2){
     extremes[1] = chull->points[1];
   }
+  
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "3");
   if(chull->points_len > 2){
     uint16_t max_dist = 0;
     for(int i=0; i<chull->points_len; ++i){
       for(int j=i+1; j<chull->points_len; ++j){
-        uint16_t dist = distance(chull->points[i], chull->points[j]);
+        uint32_t dist = distance(chull->points[i], chull->points[j]);
         if(dist > max_dist){
           extremes[0] = chull->points[i];
           extremes[1] = chull->points[j];
@@ -425,8 +429,8 @@ static void route_pattern_points_msg_handler(DictionaryIterator *received, void 
     route->pattern->points_len++;
     
     integrate_point(&route->pattern->points[index], route->pattern->convex_hull);
-    GPoint* extremes[2];
-    extreme_points(route->pattern->convex_hull, extremes);
+    s_pattern_updated = S_TRUE;
+    layer_mark_dirty(s_route_pattern);
   }
   else{
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Pattern references non-existance route: %s", route_name);
@@ -652,8 +656,42 @@ static void menu_window_unload(Window *window) {
 
 //========================================= ROUTE WINDOW ======================================================
 static void pattern_layer_update_proc(Layer *my_layer, GContext* ctx){
-  if(s_pattern_updated){
-    
+  if(s_pattern_updated && s_selected_route != NULL){
+    if(s_selected_route->pattern != NULL && s_selected_route->pattern->points != NULL){
+      s_pattern_gpath_info = malloc(sizeof(GPathInfo));
+      s_pattern_gpath_info->num_points = s_selected_route->pattern->points_len;
+      
+      // Create extremes of the convex hull
+      GPoint* hull_extremes[2];
+      extreme_points(s_selected_route->pattern->convex_hull, hull_extremes);
+      
+      if(hull_extremes[0] != NULL && hull_extremes[1] != NULL){         
+        
+        // Get the scale
+        GRect pattern_frame = layer_get_frame(my_layer);
+        uint32_t extreme_dist = distance(hull_extremes[0], hull_extremes[1]);
+        double scale_factor = ((double)pattern_frame.size.w) / extreme_dist;
+        
+        // Get the center offset
+        GPoint hull_center = center(hull_extremes[0], hull_extremes[1]);
+        GPoint frame_center = grect_center_point(&pattern_frame);
+        GPoint center_offset = GPoint(frame_center.x/scale_factor - hull_center.x, frame_center.y/scale_factor - hull_center.y);
+          
+        s_pattern_gpath_info->points = malloc(sizeof(GPoint)*s_pattern_gpath_info->num_points);
+        for(uint16_t i=0; i<s_pattern_gpath_info->num_points; ++i){
+          GPoint scaled_point = s_selected_route->pattern->points[i];
+          scaled_point.x += center_offset.x;
+          scaled_point.y += center_offset.y;
+          scaled_point.x *= scale_factor;
+          scaled_point.y *= scale_factor;
+          
+          s_pattern_gpath_info->points[i] = scaled_point;
+          APP_LOG(APP_LOG_LEVEL_DEBUG, "Scaled Point: (%d, %d)", scaled_point.x, scaled_point.y);
+        }      
+        s_pattern_path = gpath_create(s_pattern_gpath_info);
+      }
+    }
+    s_pattern_updated = S_FALSE;
   }
   if(s_pattern_gpath != NULL){
     // Fill the path:
@@ -677,7 +715,7 @@ static void route_window_load(Window *window) {
   text_layer_set_background_color(s_route_name_text, GColorClear);
   text_layer_set_text_color(s_route_name_text, GColorBlack);
   text_layer_set_text_alignment(s_route_name_text, GTextAlignmentCenter);
-  if(s_selected_route){
+  if(s_selected_route != NULL){
     text_layer_set_text(s_route_name_text, s_selected_route->subtitle);
   }
   else{
@@ -698,11 +736,22 @@ static void route_window_load(Window *window) {
   s_route_pattern = layer_create(window_frame);
   layer_set_hidden(s_route_pattern, true);
   s_pattern_loading = S_TRUE;
+  layer_set_update_proc(s_route_pattern, pattern_layer_update_proc);
   layer_add_child(window_layer, s_route_pattern);
 }
 
 static void route_window_unload(Window *window) {
   text_layer_destroy(s_route_name_text);
+  if(s_pattern_gpath_info != NULL){
+    free(s_pattern_gpath_info->points);
+    free(s_pattern_gpath_info);
+    s_pattern_gpath_info = NULL;
+  }
+  if(s_pattern_gpath != NULL){
+    gpath_destroy(s_pattern_gpath);
+    free(s_pattern_gpath);
+    s_pattern_gpath = NULL;
+  }
 }
 
 static void enter_route_window(){
