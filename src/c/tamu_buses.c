@@ -64,7 +64,6 @@ static bool s_menu_loading = S_FALSE;
 static Window *s_route_window = NULL;
 static TextLayer *s_route_name_text = NULL;
 static Layer *s_route_pattern = NULL;
-static GPath *s_pattern_path = NULL;
 static GRect s_route_name_frame;
 static MenuItem *s_selected_route = NULL;
 static bool s_pattern_loading = S_FALSE;
@@ -159,7 +158,7 @@ static void extreme_points(ConvexHull* chull, GPoint** extremes){
         }
       }
     }
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Found extreme points to be (%d, %d) and (%d, %d) with a dist of %d", extremes[0]->x, extremes[0]->y, extremes[1]->x, extremes[1]->y, max_dist);
+    //APP_LOG(APP_LOG_LEVEL_DEBUG, "Found extreme points to be (%d, %d) and (%d, %d) with a dist of %d", extremes[0]->x, extremes[0]->y, extremes[1]->x, extremes[1]->y, max_dist);
   }
 }
 
@@ -187,9 +186,13 @@ static void destroy_pattern_stops(Pattern* pattern){
   if(pattern != NULL){
     if(pattern->stops != NULL){
       for(int i=0; i<pattern->stops_len; i++){
-        if(strlen(pattern->stops[i].name) > 0) free(pattern->stops[i].name);
+        if(strlen(pattern->stops[i].name) > 0){ 
+		      free(pattern->stops[i].name);
+		      pattern->stops[i].name = NULL;	
+        }
       }
       free(pattern->stops);
+      pattern->stops = NULL;
     }
     pattern->stops_len = 0;
   } 
@@ -200,12 +203,19 @@ static void destroy_menu_items(){
   for(int i=0; i<SECTIONS_LEN; i++){
     for(int j=0; j<s_section_lens[i]; j++){
       MenuItem *item = &s_menu_items[i][j];
-      if(strlen(item->title) > 0) free(item->title);
-      if(strlen(item->subtitle) > 0) free(item->subtitle);
+      if(strlen(item->title) > 0) {
+        free(item->title);
+        item->title = NULL;
+      }
+      if(strlen(item->subtitle) > 0){ 
+        free(item->subtitle);
+        item->subtitle = NULL;
+      }
       destroy_pattern_points(item->pattern);
       destroy_pattern_stops(item->pattern);
       destroy_convex_hull(item->pattern->convex_hull);
       free(item->pattern);
+      item->pattern = NULL;
     }
     s_section_lens[i] = 0;
     free(s_menu_items[i]);
@@ -675,20 +685,23 @@ static void pattern_layer_update_proc(Layer *my_layer, GContext* ctx){
         // Get the center offset
         GPoint hull_center = center(hull_extremes[0], hull_extremes[1]);
         GPoint frame_center = grect_center_point(&pattern_frame);
-        GPoint center_offset = GPoint(frame_center.x/scale_factor - hull_center.x, frame_center.y/scale_factor - hull_center.y);
-          
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "Frame Center: (%d, %d)", frame_center.x, frame_center.y);
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "Hull Center: (%d, %d)", hull_center.x, hull_center.y);
+        
         s_pattern_gpath_info->points = malloc(sizeof(GPoint)*s_pattern_gpath_info->num_points);
         for(uint16_t i=0; i<s_pattern_gpath_info->num_points; ++i){
           GPoint scaled_point = s_selected_route->pattern->points[i];
-          scaled_point.x += center_offset.x;
-          scaled_point.y += center_offset.y;
+          scaled_point.x -= hull_center.x;
+          scaled_point.y -= hull_center.y;
           scaled_point.x *= scale_factor;
           scaled_point.y *= scale_factor;
-          
+          scaled_point.x += frame_center.x;
+          scaled_point.y += frame_center.y;
+        
           s_pattern_gpath_info->points[i] = scaled_point;
-          APP_LOG(APP_LOG_LEVEL_DEBUG, "Scaled Point: (%d, %d)", scaled_point.x, scaled_point.y);
+          //APP_LOG(APP_LOG_LEVEL_DEBUG, "Scaled Point: (%d, %d)", scaled_point.x, scaled_point.y);
         }      
-        s_pattern_path = gpath_create(s_pattern_gpath_info);
+        s_pattern_gpath = gpath_create(s_pattern_gpath_info);
       }
     }
     s_pattern_updated = S_FALSE;
