@@ -27,6 +27,8 @@ var retryWait = retryWaitOriginal;
 var pebbleInboxSize = 124; // The defult minimum
 var pebbleUsedInbox = 0;
 
+console.log("Phone JS is running");
+
 // String formating function 
 // Courtesy of @fearphage http://stackoverflow.com/questions/610406/javascript-equivalent-to-printf-string-format/4673436#4673436
 if (!String.prototype.format) {

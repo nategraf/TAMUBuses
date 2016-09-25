@@ -224,7 +224,6 @@ static void routes_msg_handler(DictionaryIterator *received, void *context){
   new_item->pattern->points = NULL;
   new_item->pattern->stops_len = 0;
   new_item->pattern->stops = NULL;
-  menu_layer_set_selected_index(s_menu_layer, MenuIndex(group, s_section_lens[group]), MenuRowAlignCenter, false);
   s_section_lens[group]++;
 
   // Show the route menu/hide the loading message
@@ -232,6 +231,10 @@ static void routes_msg_handler(DictionaryIterator *received, void *context){
     s_menu_loading = S_FALSE;
     layer_set_hidden(menu_layer_get_layer(s_menu_layer), false);
     layer_set_hidden(text_layer_get_layer(s_menu_loading_text), true);
+    
+    // Fix the selection so it points properly to the first item
+    menu_layer_set_selected_index(s_menu_layer, MenuIndex(0,0), MenuRowAlignCenter, true);
+    menu_layer_reload_data(s_menu_layer);
   }
 
   layer_mark_dirty(menu_layer_get_layer(s_menu_layer));
