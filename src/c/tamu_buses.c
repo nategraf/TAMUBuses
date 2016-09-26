@@ -705,7 +705,10 @@ static void pattern_layer_update_proc(Layer *my_layer, GContext* ctx){
           s_pattern_gpath_info->points[i] = scaled_point;
           //APP_LOG(APP_LOG_LEVEL_DEBUG, "Scaled Point: (%d, %d)", scaled_point.x, scaled_point.y);
         }  
-        gpath_destroy(s_pattern_gpath);
+        if(s_pattern_gpath != NULL){
+          gpath_destroy(s_pattern_gpath);
+          s_pattern_gpath = NULL;
+        }
         s_pattern_gpath = gpath_create(s_pattern_gpath_info);
       }
     }
@@ -772,7 +775,6 @@ static void route_window_unload(Window *window) {
   }
   if(s_pattern_gpath != NULL){
     gpath_destroy(s_pattern_gpath);
-    free(s_pattern_gpath);
     s_pattern_gpath = NULL;
   }
 }
@@ -816,8 +818,6 @@ static void deinit(void) {
   window_destroy(s_route_window);
   
   destroy_menu_items();
-  
-  // Free up heap memory used by stop listings
 }
 
 int main( void ) {
