@@ -3,6 +3,7 @@
 #define PATTERN_LEN 256
 #define STOPS_LEN 32
 #define SECTIONS_LEN 4
+#define PATTERN_FRAME_PADDING 20
 #define INBOX_SIZE APP_MESSAGE_INBOX_SIZE_MINIMUM
 #define OUTBOX_SIZE APP_MESSAGE_OUTBOX_SIZE_MINIMUM
 
@@ -133,11 +134,9 @@ static void integrate_point(GPoint* p, ConvexHull* chull){
 // Currently O(n^2); Can be reduced to O(n) with rotating calipers algorithm
 // Extremes needs to be a GPoint* pair to be filled
 static void extreme_points(ConvexHull* chull, GPoint** extremes){
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "1");
   extremes[0] = NULL;
   extremes[1] = NULL;
   
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "2");
   if(chull->points_len >= 1){
     extremes[0] = chull->points[0];
   }
@@ -145,7 +144,6 @@ static void extreme_points(ConvexHull* chull, GPoint** extremes){
     extremes[1] = chull->points[1];
   }
   
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "3");
   if(chull->points_len > 2){
     uint16_t max_dist = 0;
     for(int i=0; i<chull->points_len; ++i){
@@ -668,8 +666,14 @@ static void menu_window_unload(Window *window) {
 static void pattern_layer_update_proc(Layer *my_layer, GContext* ctx){
   if(s_pattern_updated && s_selected_route != NULL){
     if(s_selected_route->pattern != NULL && s_selected_route->pattern->points != NULL){
-      s_pattern_gpath_info = malloc(sizeof(GPathInfo));
-      s_pattern_gpath_info->num_points = s_selected_route->pattern->points_len;
+      if(s_pattern_gpath_info == NULL){
+          s_pattern_gpath_info = malloc(sizeof(GPathInfo));
+      }
+      if(s_pattern_gpath_info->num_points != s_selected_route->pattern->points_len){
+        s_pattern_gpath_info->num_points = s_selected_route->pattern->points_len;
+        if(s_pattern_gpath_info->points != NULL) free(s_pattern_gpath_info->points);
+        s_pattern_gpath_info->points = malloc(sizeof(GPoint)*s_pattern_gpath_info->num_points);
+      }
       
       // Create extremes of the convex hull
       GPoint* hull_extremes[2];
@@ -680,17 +684,17 @@ static void pattern_layer_update_proc(Layer *my_layer, GContext* ctx){
         // Get the scale
         GRect pattern_frame = layer_get_frame(my_layer);
         uint32_t extreme_dist = distance(hull_extremes[0], hull_extremes[1]);
-        double scale_factor = ((double)pattern_frame.size.w) / extreme_dist;
+        double scale_factor = ((double)pattern_frame.size.w - PATTERN_FRAME_PADDING) / extreme_dist;
         
         // Get the center offset
         GPoint hull_center = center(hull_extremes[0], hull_extremes[1]);
         GPoint frame_center = grect_center_point(&pattern_frame);
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "Frame Center: (%d, %d)", frame_center.x, frame_center.y);
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "Hull Center: (%d, %d)", hull_center.x, hull_center.y);
+        //APP_LOG(APP_LOG_LEVEL_DEBUG, "Frame Center: (%d, %d)", frame_center.x, frame_center.y);
+        //APP_LOG(APP_LOG_LEVEL_DEBUG, "Hull Center: (%d, %d)", hull_center.x, hull_center.y);
         
-        s_pattern_gpath_info->points = malloc(sizeof(GPoint)*s_pattern_gpath_info->num_points);
         for(uint16_t i=0; i<s_pattern_gpath_info->num_points; ++i){
           GPoint scaled_point = s_selected_route->pattern->points[i];
+          //APP_LOG(APP_LOG_LEVEL_DEBUG, "Precaled Point: (%d, %d)", scaled_point.x, scaled_point.y);
           scaled_point.x -= hull_center.x;
           scaled_point.y -= hull_center.y;
           scaled_point.x *= scale_factor;
@@ -700,7 +704,8 @@ static void pattern_layer_update_proc(Layer *my_layer, GContext* ctx){
         
           s_pattern_gpath_info->points[i] = scaled_point;
           //APP_LOG(APP_LOG_LEVEL_DEBUG, "Scaled Point: (%d, %d)", scaled_point.x, scaled_point.y);
-        }      
+        }  
+        gpath_destroy(s_pattern_gpath);
         s_pattern_gpath = gpath_create(s_pattern_gpath_info);
       }
     }
@@ -708,11 +713,16 @@ static void pattern_layer_update_proc(Layer *my_layer, GContext* ctx){
   }
   if(s_pattern_gpath != NULL){
     // Fill the path:
-    graphics_context_set_fill_color(ctx, GColorWhite);
-    gpath_draw_filled(ctx, s_pattern_gpath);
+    //graphics_context_set_fill_color(ctx, GColorWhite);
+    //gpath_draw_filled(ctx, s_pattern_gpath);
     // Stroke the path:
-    graphics_context_set_stroke_color(ctx, GColorBlack);
-    gpath_draw_outline(ctx, s_pattern_gpath);
+    GColor outline_color = GColorBlack;
+    if(s_selected_route != NULL && s_selected_route->color_rgb != NULL){
+      outline_color = GColorFromRGB(s_selected_route->color_rgb[0], s_selected_route->color_rgb[1], s_selected_route->color_rgb[2]);
+    }
+    graphics_context_set_stroke_color(ctx, outline_color);
+    graphics_context_set_stroke_width(ctx, 2);
+    gpath_draw_outline_open(ctx, s_pattern_gpath);
   }
 }
 

@@ -233,12 +233,11 @@ Pebble.addEventListener("appmessage", function(e) {
           points.push(point);
         }
         // Normalize the X and Y so we can work with smaller numbers, then multiply so we can get precision without floats
-        // Each point of x and 
         for(var i = 0; i < points.length; i++){
           points[i].point_x -= minX;
           points[i].point_y -= minY;
-          points[i].point_x *= 100; 
-          points[i].point_y *= 100;
+          points[i].point_x *= 1; 
+          points[i].point_y *= 1;
         }
         console.log(JSON.stringify(points));
         console.log(JSON.stringify(resp));
