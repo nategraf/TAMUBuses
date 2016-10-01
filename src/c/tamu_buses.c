@@ -195,25 +195,29 @@ static void destroy_pattern_stops(Pattern* pattern){
     pattern->stops_len = 0;
   } 
 }
-  
+
+static void destroy_menu_item(MenuItem *item){
+  if(strlen(item->title) > 0) {
+    free(item->title);
+    item->title = NULL;
+  }
+  if(strlen(item->subtitle) > 0){ 
+    free(item->subtitle);
+    item->subtitle = NULL;
+  }
+  destroy_pattern_points(item->pattern);
+  destroy_pattern_stops(item->pattern);
+  destroy_convex_hull(item->pattern->convex_hull);
+  free(item->pattern);
+  item->pattern = NULL;
+}
+
 // Free up the heap memory used by menu item titles and patterns
 static void destroy_menu_items(){
   for(int i=0; i<SECTIONS_LEN; i++){
     for(int j=0; j<s_section_lens[i]; j++){
       MenuItem *item = &s_menu_items[i][j];
-      if(strlen(item->title) > 0) {
-        free(item->title);
-        item->title = NULL;
-      }
-      if(strlen(item->subtitle) > 0){ 
-        free(item->subtitle);
-        item->subtitle = NULL;
-      }
-      destroy_pattern_points(item->pattern);
-      destroy_pattern_stops(item->pattern);
-      destroy_convex_hull(item->pattern->convex_hull);
-      free(item->pattern);
-      item->pattern = NULL;
+      destroy_menu_item(item);
     }
     s_section_lens[i] = 0;
     free(s_menu_items[i]);
