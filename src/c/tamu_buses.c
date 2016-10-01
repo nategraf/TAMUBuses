@@ -32,7 +32,7 @@ typedef struct {
 typedef struct{
   char *name;
   bool is_timed;
-  GPoint *point;
+  uint16_t point_index;
 } Stop;
 
 // An array of points and a linked list of stops
@@ -196,6 +196,14 @@ static void destroy_pattern_stops(Pattern* pattern){
   } 
 }
 
+static void destroy_pattern(Pattern* pattern){
+  destroy_pattern_points(pattern);
+  destroy_pattern_stops(pattern);
+  destroy_convex_hull(pattern->convex_hull);
+  pattern->convex_hull = NULL;
+  free(pattern);
+}
+
 static void destroy_menu_item(MenuItem *item){
   if(strlen(item->title) > 0) {
     free(item->title);
@@ -205,9 +213,7 @@ static void destroy_menu_item(MenuItem *item){
     free(item->subtitle);
     item->subtitle = NULL;
   }
-  destroy_pattern_points(item->pattern);
-  destroy_pattern_stops(item->pattern);
-  destroy_convex_hull(item->pattern->convex_hull);
+  destroy_pattern(item->pattern);
   free(item->pattern);
   item->pattern = NULL;
 }
@@ -427,7 +433,6 @@ static void route_pattern_points_msg_handler(DictionaryIterator *received, void 
   if(route != NULL){
     if(route->pattern->points == NULL){
       // This is a new list transmission
-      //destroy_pattern_points(route->pattern);
       route->pattern->points = (GPoint*)malloc(sizeof(GPoint) * list_len);
       route->pattern->points_len = 0;
     }
@@ -514,21 +519,14 @@ static void route_pattern_stops_msg_handler(DictionaryIterator *received, void *
     }
   }
   if(route != NULL){
-    if(route->pattern->points == NULL){
-      // This is a new list transmission
-      //destroy_pattern_points(route->pattern);
-      route->pattern->points = (GPoint*)malloc(sizeof(GPoint) * list_len);
-      route->pattern->points_len = 0;
-    }
     if(route->pattern->stops == NULL){
       // This is a new list transmission
-      //destroy_pattern_stops(route->pattern);
       route->pattern->stops = (Stop*)malloc(sizeof(Stop) * list_len);
       route->pattern->stops_len = 0;
     }
     route->pattern->stops[index].is_timed = is_timed;
     route->pattern->stops[index].name = stop_name;
-    route->pattern->stops[index].point = route->pattern->points + stop_point_index;
+    route->pattern->stops[index].point_index = stop_point_index;
     route->pattern->stops_len++;
   }
   else{
@@ -772,8 +770,12 @@ static void route_window_load(Window *window) {
 
 static void route_window_unload(Window *window) {
   text_layer_destroy(s_route_name_text);
+  s_route_name_text = NULL;
   if(s_pattern_gpath_info != NULL){
-    free(s_pattern_gpath_info->points);
+    if(s_pattern_gpath_info->points != NULL){
+      free(s_pattern_gpath_info->points);
+      s_pattern_gpath_info->points = NULL;
+    }
     free(s_pattern_gpath_info);
     s_pattern_gpath_info = NULL;
   }
